@@ -1565,53 +1565,79 @@ void handleInstruction( Value*                      cur_value,      // one of th
                             MY_DEBUG( _DEBUG_LEVEL, llvm::outs() <<"[WRONG] check me at line "<< __LINE__ <<"\n");
                         }
                     }
-                    /*
-                    Value* matched_ins = nullptr;
-                    for(vector<pair<pair<Type *, vector<int>>, Value *>>::iterator i = gv_info->GEPInfoList.begin(); i != gv_info->GEPInfoList.end(); i++)
-                        matched_ins = FetchValue4FurtherFollow(&*i);
-                        if(matched_ins == nullptr){
-                            MY_DEBUG( _DEBUG_LEVEL, llvm::outs()<<"This should not occur. Because we failed to find a GEP_inst in the whole list! Check line: "<< __LINE__ << " \n");
-                            continue;
-                        }
-
-                        // 3. follow the match gep_inst recursively.
-                        if(Instruction* matched_instruction = dyn_cast<Instruction>(matched_ins))
-                            handleUser(, gv_info, nullptr, 0);
-                    */
                     //printSequenceUsers(gep_inst->getOperand(0));
                 }
             }
+
+
+        /// NOTE: The case we handle here is like:
+        /*
+         *  define dso_local void @_Z11testAddressRii(i32* dereferenceable(4) %a, i32 %b) #0 !dbg !935 {
+         *       entry:                                           \______
+         *       %a.addr = alloca i32*, align 8                           when caller may give a reference, we need be caution if tainting to it.
+         *       %b.addr = alloca i32, align 4
+         *       store i32* %a, i32** %a.addr, align 8  <------------------- (3) %a.addr is stored with an address - %a (first argument)
+         *       store i32 %b, i32* %b.addr, align 4
+         *       %0 = load i32, i32* @sum, align 4, !dbg !942
+         *       %1 = load i32, i32* %b.addr, align 4, !dbg !943
+         *       %or = or i32 %0, %1, !dbg !944
+         *       %2 = load i32*, i32** %a.addr, align 8, !dbg !945 <-------- (2) %2 is the address stored in %a.addr
+         *       store i32 %or, i32* %2, align 4, !dbg !946 <--------------- (1) when store to %2
+         */
         } else if (LoadInst *load_inst = dyn_cast<LoadInst>(store_addr)){
 
             MY_DEBUG( _DEBUG_LEVEL,  printTabs(level+1));
             MY_DEBUG( _DEBUG_LEVEL,  llvm::outs() << "Pointer analysis: this StoreInst stores to a address loaded by LoadInst, follow the `addr` of it load from.\n");
-            Value * load_addr = load_inst->getPointerOperand();
-
+            Value * load_addr = load_inst->getOperand(0);
+            
+            /// NOTE: `load_addr` is the address where maybe stored an address to (reference to) a caller's variable 
+            ///        but note that if you print the class of `users_of_load_addr`, you may got a 'User::DerivedUser', 
+            ///        which is usually caused by instruction like: "a.addr = alloca i32*, align 8"
             vector<User*> users_of_load_addr = getSequenceUsers(load_addr);
             
+            /// NOTE: Rather than cast `users_of_load_addr` to instruction, we need to search in among the users of 
+            ///       this address to see: if there is a StoreInst ever store something into this address. If yes, 
+            ///       and this StoreInst store the address (which is also a function arguments) to it, then, the taint
+            ///       is out this function. We need to visit callgraph to follow further in the caller.
             for(vector<User*>::iterator I_user=users_of_load_addr.begin(); I_user!=users_of_load_addr.end();I_user++){
 
                 if(StoreInst *sb_store_to_this_addr = dyn_cast<StoreInst>(*I_user)){
                     
                     if(comesBefore(sb_store_to_this_addr, load_inst)){
-                        
                         Value * tobe_followed_reference = sb_store_to_this_addr->getOperand(0);
 
-                        //AttributeList ab_list =  load_inst->getFunction()->getAttributes();
-
+                        /// If hits at least one argument. If yes, visit callgraph to follow further in the caller.
                         Function * thisFun = load_inst->getFunction();
-
-                        for(Function::arg_iterator arg_iter = thisFun->arg_begin(); arg_iter!= thisFun->arg_end(); arg_iter++){
+                        uint arg_index = 0;
+                        for(Function::arg_iterator arg_iter = thisFun->arg_begin(); arg_iter!= thisFun->arg_end(); arg_iter++, arg_index++){
                             
-                            if (arg_iter == tobe_followed_reference){
-                                 llvm::outs() << "__________";
-                                 arg_iter->print(llvm::outs());
-                                 llvm::outs() << "__________\n";
+                            if (arg_iter == tobe_followed_reference) {
+                                /*
+                                 * Get users of the ReturnInst (which is a CallBase)
+                                 */
+                                vector< pair< CallBase *, Function * > * > callers = getCallerAndCallInst(thisFun);
+                                printCallers(callers, level+1);
+
+                                /*
+                                * For every users (CallBase) of the ReturnInst, trace their correspoding operand (argument).
+                                */
+                                for(vector< pair< CallBase *, Function * > * >::iterator i=callers.begin(); i!=callers.end(); i++){
+                                    CallBase * caller_inst = (*i)->first;
+                                    struct SrcLoc srcloc = getSrcLoc(caller_inst);
+                                    struct InstInfo * inst_info_caller = new InstInfo(caller_inst, srcloc);
+                                    cur_inst_info->Successors.push_back(inst_info_caller);
+                                    inst_info_caller->Predecessor = cur_inst_info;
+                                    Value * tainted_tobe_followed = caller_inst->getArgOperand(arg_index);
+                                    tainted_tobe_followed->print(llvm::outs());
+                                    llvm::outs() <<"\n";
+
+                                    handleUser(tainted_tobe_followed, gv_info, inst_info_caller, level+1);
+                                }
                             }
-                            //if((Attribute::Dereferenceable == )
                         }
-                    }
-                }
+                    } /// NOTE: NO `else` here, since if not comesBefore, the case can be passed happily.
+                
+                } /// NOTE: NO `else` here, since `handleUser(store_addr, gv_info, cur_inst_info, level+1);` will handle normal cases.
             }
 
 
@@ -2253,7 +2279,7 @@ void handleUser( Value* cur_value, struct GlobalVariableInfo* gv_info, struct In
 
             if(prev_inst_info && cur_inst == prev_inst_info->InstPtr){
                 MY_DEBUG( _WARNING_LEVEL,  printTabs(level+1));
-                MY_DEBUG( _WARNING_LEVEL, llvm::outs()<<"`Previous ins` == `Current ins`. Mostly because tracing user of *addr* of a storeIns\n");
+                MY_DEBUG( _WARNING_LEVEL, llvm::outs()<<"`Previous ins` == `Current ins`. Mostly because tracing user of *addr* of a storeIns, or a tainted argument of a call\n");
                 continue;
             }
 

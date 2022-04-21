@@ -172,22 +172,32 @@ int zed(int& zed, int m, int n)
 
 void testAddress(int & a, int b){
     a=sum|b;
+    a+=a;
 }
 /**************** -O0 ********************
 define dso_local void @_Z11testAddressRii(i32* dereferenceable(4) %a, i32 %b) #0 !dbg !935 {
 entry:
   %a.addr = alloca i32*, align 8
   %b.addr = alloca i32, align 4
-  store i32* %a, i32** %a.addr, align 8  <------------
-  call void @llvm.dbg.declare(metadata i32** %a.addr, metadata !938, metadata !DIExpression()), !dbg !939
+  store i32* %a, i32** %a.addr, align 8
+                            call void @llvm.dbg.declare(metadata i32** %a.addr, metadata !938, metadata !DIExpression()), !dbg !939
   store i32 %b, i32* %b.addr, align 4
-  call void @llvm.dbg.declare(metadata i32* %b.addr, metadata !940, metadata !DIExpression()), !dbg !941
+                            call void @llvm.dbg.declare(metadata i32* %b.addr, metadata !940, metadata !DIExpression()), !dbg !941
+  
   %0 = load i32, i32* @sum, align 4, !dbg !942
   %1 = load i32, i32* %b.addr, align 4, !dbg !943
   %or = or i32 %0, %1, !dbg !944
   %2 = load i32*, i32** %a.addr, align 8, !dbg !945
-  store i32 %or, i32* %2, align 4, !dbg !946  <------- i32* %2 (load i32*, i32** %a.addr, align 8, !dbg !945) === store->getPointerOperand() if is load, addr of load. User of addr.
-  ret void, !dbg !947
+  store i32 %or, i32* %2, align 4, !dbg !946
+
+  %3 = load i32*, i32** %a.addr, align 8, !dbg !947
+  %4 = load i32, i32* %3, align 4, !dbg !947
+  %5 = load i32*, i32** %a.addr, align 8, !dbg !948
+  %6 = load i32, i32* %5, align 4, !dbg !949
+  %add = add nsw i32 %6, %4, !dbg !949
+  store i32 %add, i32* %5, align 4, !dbg !949
+  
+  ret void, !dbg !950
 }
 */
 
