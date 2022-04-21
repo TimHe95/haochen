@@ -17,3 +17,7 @@ make
 cd test/demo
 ../../tainter test.bc test-var.txt
 ```
+## Check results
+```
+cat test-records.dat
+```
