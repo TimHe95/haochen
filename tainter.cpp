@@ -1,4 +1,5 @@
-#include "DLCallGraph.h"
+//#include "DLCallGraph.h"
+#include "restoreSave.h"
 
 
 /*
@@ -2530,10 +2531,11 @@ int main(int argc, char **argv)
      ** Get all IR instructions and record some GetElementPtrInsts.
      **
      ********************************************************/
-    int recorded = 0, ignored = 0, inSTD = 0;
+    int recorded = 0, ignored = 0, inSTD = 0, cnt = 0;
+    uint inst_count = M->getInstructionCount();
     // for every function in the module.
     for (Module::iterator F = M->begin(), F_End = M->end(); F != F_End; ++F) {
-
+        
         if(F->isIntrinsic())
             continue;
 
@@ -2542,6 +2544,11 @@ int main(int argc, char **argv)
             
             // for every instruction in the basic block
             for(BasicBlock::iterator inst = BB->begin(); inst!=BB->end(); inst++){
+
+                if(++cnt%1000==0){
+                    //MY_DEBUG( _DEBUG_LEVEL, llvm::outs() << cnt <<"/" << inst_count << "  ");
+                    printf("\033[K%.1f%%\r", (float)cnt*100.0/(float)inst_count);
+                }
 
                 if (GetElementPtrInst* gep_inst = dyn_cast<GetElementPtrInst>(inst)) {
 
@@ -2558,10 +2565,10 @@ int main(int argc, char **argv)
                         /// Good Example: 
                         /// %field_i = getelementptr inbounds %struct.TTT, %struct.TTT* %6, i32 0, i32 8
                         ///                                               |       0        |  1  |  2  |
-                        MY_DEBUG( _DEBUG_LEVEL, llvm::outs() <<"[NOTE] Ignore this GetElementPtrInst (num_op = " << gep_inst->getNumOperands() << ")\n");
-                        MY_DEBUG( _DEBUG_LEVEL, gep_inst->print(llvm::outs()));
-                        MY_DEBUG( _DEBUG_LEVEL, llvm::outs() <<"\n");
-                        MY_DEBUG( _DEBUG_LEVEL, srcloc.print(1));
+                        /// MY_DEBUG( _DEBUG_LEVEL, llvm::outs() <<"[NOTE] Ignore this GetElementPtrInst (num_op = " << gep_inst->getNumOperands() << ")\n");
+                        /// MY_DEBUG( _DEBUG_LEVEL, gep_inst->print(llvm::outs()));
+                        /// MY_DEBUG( _DEBUG_LEVEL, llvm::outs() <<"\n");
+                        /// MY_DEBUG( _DEBUG_LEVEL, srcloc.print(1));
                         ignored++;
                         continue;
                     }
@@ -2613,15 +2620,18 @@ int main(int argc, char **argv)
             }
         }
     }
-    
+    /*
     for(vector<pair<pair<Type* , vector<int>>, Value* >>::iterator it = GEPTypeOffsetInstList.begin(); it!=GEPTypeOffsetInstList.end(); it++)    {    
         it->second->print(llvm::outs());
         for(vector<int>::iterator it2 = it->first.second.begin(); it2!=it->first.second.end(); it2++)
             llvm::outs() << ", " << *it2;
         llvm::outs() << "\n";
     }
-    
-    llvm::outs() << "-----------------------------------------------------------------------------------\n";
+    */
+    //saveData(GEPTypeOffsetInstList);
+    //restore();
+
+    llvm::outs() << "\n-----------------------------------------------------------------------------------\n";
     llvm::outs() << "Record " << recorded << " gep_ins,  Ignore " << ignored << " complex gep_ins,  Ignore STD-lib " << inSTD << " gep_ins.\n";
     llvm::outs() << "-----------------------------------------------------------------------------------\n"; 
         //curFref->viewCFG();
