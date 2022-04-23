@@ -2531,33 +2531,35 @@ int main(int argc, char **argv)
      ** Get all IR instructions and record some GetElementPtrInsts.
      **
      ********************************************************/
-    int recorded = 0, ignored = 0, inSTD = 0, cnt = 0;
+    int recorded = 0, ignored = 0, cnt = 0;
+    bool next = false;
     uint inst_count = M->getInstructionCount();
     // for every function in the module.
     for (Module::iterator F = M->begin(), F_End = M->end(); F != F_End; ++F) {
         
+        // true if the function's name starts with "llvm.".
         if(F->isIntrinsic())
             continue;
 
         // for every basic block in the function.
         for (Function::iterator BB = F->begin(), BEnd = F->end(); BB != BEnd; ++BB) {
-            
+
             // for every instruction in the basic block
             for(BasicBlock::iterator inst = BB->begin(); inst!=BB->end(); inst++){
 
-                if(++cnt%1000==0){
-                    //MY_DEBUG( _DEBUG_LEVEL, llvm::outs() << cnt <<"/" << inst_count << "  ");
-                    printf("\033[K%.1f%%\r", (float)cnt*100.0/(float)inst_count);
+                // First, ignore this function if the first inst is from library.
+                struct SrcLoc srcloc = getSrcLoc(&*inst);
+                if(srcloc.filenameHasString("include/c++") || srcloc.dirHasString("include/c++")) {
+                    next=true;
+                    break;
+                }
+
+                if(++cnt%100==0){
+                    printf("\033[K%u/%u\r", cnt, inst_count);
+                    fflush(stdout);
                 }
 
                 if (GetElementPtrInst* gep_inst = dyn_cast<GetElementPtrInst>(inst)) {
-
-                    struct SrcLoc srcloc = getSrcLoc(gep_inst);
-
-                    if(srcloc.filenameHasString("include/c++") || srcloc.dirHasString("include/c++")) {
-                        inSTD++;
-                        continue;
-                    }
 
                     if(!gep_inst->hasIndices() || 
                         gep_inst->getNumOperands() < 3 ||
@@ -2590,10 +2592,10 @@ int main(int argc, char **argv)
                     }
                     // some operand is not constant int, but is int, I don't know why.
                     if(ignore){
-                        MY_DEBUG( _DEBUG_LEVEL, llvm::outs() <<"[NOTE] Ignore this GetElementPtrInst\n");
-                        MY_DEBUG( _DEBUG_LEVEL, gep_inst->print(llvm::outs()));
-                        MY_DEBUG( _DEBUG_LEVEL, llvm::outs() <<"\n");
-                        MY_DEBUG( _DEBUG_LEVEL, srcloc.print(1));
+                        //MY_DEBUG( _DEBUG_LEVEL, llvm::outs() <<"[NOTE] Ignore this GetElementPtrInst\n");
+                        //MY_DEBUG( _DEBUG_LEVEL, gep_inst->print(llvm::outs()));
+                        //MY_DEBUG( _DEBUG_LEVEL, llvm::outs() <<"\n");
+                        //MY_DEBUG( _DEBUG_LEVEL, srcloc.print(1));
                         ignored++;
                         continue;
                     }
@@ -2602,6 +2604,8 @@ int main(int argc, char **argv)
                     pair<Type* , vector<int>> p(type, indices);
                     pair< pair<Type* , vector<int>>, Value* > pp(p, gep_inst);
                     bool push_back = true;
+                    /*
+                    // commented out. because we do not need to make unique
                     for(vector<pair<pair<Type *, vector<int>>, Value*>>::iterator i = GEPTypeOffsetInstList.begin(); i != GEPTypeOffsetInstList.end(); i++)
                     {
                         if (GetElementPtrInst* ins = dyn_cast<GetElementPtrInst>(i->second))
@@ -2611,12 +2615,17 @@ int main(int argc, char **argv)
                                 break;
                             }
                         }
-                    }
+                    }*/
                     if(push_back){
                         GEPTypeOffsetInstList.push_back(pp);
                         recorded++;
                     }
                 }
+            }
+            if(next){
+                next = false;
+                cnt += F->getInstructionCount();
+                break;
             }
         }
     }
@@ -2631,9 +2640,9 @@ int main(int argc, char **argv)
     //saveData(GEPTypeOffsetInstList);
     //restore();
 
-    llvm::outs() << "\n-----------------------------------------------------------------------------------\n";
-    llvm::outs() << "Record " << recorded << " gep_ins,  Ignore " << ignored << " complex gep_ins,  Ignore STD-lib " << inSTD << " gep_ins.\n";
-    llvm::outs() << "-----------------------------------------------------------------------------------\n"; 
+    llvm::outs() << "\n-------------------------------------------------------------------\n";
+    llvm::outs() << "Record " << recorded << " gep_ins,  Ignore " << ignored << " complex gep_ins.\n";
+    llvm::outs() << "---------------------------------------------------------------------\n"; 
         //curFref->viewCFG();
         //for (BasicBlock &BB : Func)
 
