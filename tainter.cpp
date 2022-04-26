@@ -1233,22 +1233,21 @@ void handleControFlowFromBBs(vector<BasicBlock*>     & BBs,
     MY_DEBUG( _DEBUG_LEVEL,  printTabs(level+1));
     MY_DEBUG( _DEBUG_LEVEL,  llvm::outs() << "[== " << __func__ << " ==]\n");
 
+    // iterate every BB in vector<BasicBlock*> BBs, handle
+    // store ins and call ins only (for now)
     for (vector<BasicBlock*>::iterator iB = BBs.begin(); iB != BBs.end(); iB++){
-        // record store ins and call ins only (for now)
-
+        
         MY_DEBUG( _DEBUG_LEVEL,  printTabs(level+1));
-        MY_DEBUG( _DEBUG_LEVEL,  llvm::outs() << "...........................\n");
+        MY_DEBUG( _DEBUG_LEVEL,  llvm::outs() << "+-----------------------------\n");
         MY_DEBUG( _DEBUG_LEVEL,  printTabs(level+1));
-        MY_DEBUG( _DEBUG_LEVEL,  llvm::outs() << ".  BasicBlock \"" << (*iB)->getName() << "\"\n");
+        MY_DEBUG( _DEBUG_LEVEL,  llvm::outs() << "|  BasicBlock \"" << (*iB)->getName() << "\"\n");
         MY_DEBUG( _DEBUG_LEVEL,  printTabs(level+1));
-        MY_DEBUG( _DEBUG_LEVEL,  llvm::outs() << "...........................\n");
+        MY_DEBUG( _DEBUG_LEVEL,  llvm::outs() << "+-----------------------------\n");
   
-
-    /// OUTPUTSOMEBBINFOHERE. TODO!!
-
         vector<StoreInst*> store_ins_set;
         vector<CallBase*> call_ins_set;
 
+        // clear store_ins_set and call_ins_set
         vector <StoreInst*>::iterator iter_s=store_ins_set.begin();
         for ( ;iter_s!=store_ins_set.end();)
             iter_s = store_ins_set.erase(iter_s);
@@ -1256,15 +1255,18 @@ void handleControFlowFromBBs(vector<BasicBlock*>     & BBs,
         for ( ;iter_c!=call_ins_set.end();)
             iter_c = call_ins_set.erase(iter_c);
 
+        // for every ins in this BB
         for(BasicBlock::iterator inst = (*iB)->begin(); inst != (*iB)->end(); inst++){
             
             if(StoreInst* store_inst = dyn_cast<StoreInst>(inst)){
                 store_ins_set.push_back(store_inst);
+                
             } else if (CallBase* call_inst = dyn_cast<CallBase>(inst)){
-                if(!call_inst->getCalledFunction()->isIntrinsic() &&
+                if( call_inst->getCalledFunction() &&
+                   !call_inst->getCalledFunction()->isIntrinsic() &&
                    !isSubStr(call_inst->getCalledFunction()->getName().str(), "llvm.dbg") ){
                     call_ins_set.push_back(call_inst);
-                }
+                } // else it is a callBase but without any function.
             }
         }
 
@@ -2513,6 +2515,10 @@ int main(int argc, char **argv)
      ** Initialize LLVM IR related.
      **
      *********************************/
+    llvm::outs() << "---------------------------------------------------------------------\n"; 
+    llvm::outs() << "Parsing IR file... \n";
+    clock_t startTime = clock();
+
     LLVMContext context;
     SMDiagnostic Err;
     std::unique_ptr<llvm::Module> module = parseIRFile( ir_file.c_str(), Err, context);
@@ -2524,6 +2530,9 @@ int main(int argc, char **argv)
     }
     //CallGraph * CG = new CallGraph(*M);
     //DLCG = new DLCallGraph(CG);
+    clock_t endTime = clock();
+	llvm::outs() << "Parsing DONE. ["<< (endTime - startTime) / CLOCKS_PER_SEC << "] secs" << "\n";
+    llvm::outs() << "---------------------------------------------------------------------\n"; 
 
     
     /********************************************************
@@ -2531,6 +2540,8 @@ int main(int argc, char **argv)
      ** Get all IR instructions and record some GetElementPtrInsts.
      **
      ********************************************************/
+    llvm::outs() << "Recording all GEPInstructions... \n";
+    startTime = clock();
     int recorded = 0, ignored = 0, cnt = 0;
     bool next = false;
     uint inst_count = M->getInstructionCount();
@@ -2554,8 +2565,8 @@ int main(int argc, char **argv)
                     break;
                 }
 
-                if(++cnt%100==0){
-                    printf("\033[K%u/%u\r", cnt, inst_count);
+                if(++cnt%1000==0){
+                    printf("\033[K%u/(about %u)\r", cnt, inst_count);
                     fflush(stdout);
                 }
 
@@ -2629,6 +2640,8 @@ int main(int argc, char **argv)
             }
         }
     }
+    endTime = clock();
+    llvm::outs() << "Recording DONE. ["<< (endTime - startTime) / CLOCKS_PER_SEC << "] secs" << "\n";
     /*
     for(vector<pair<pair<Type* , vector<int>>, Value* >>::iterator it = GEPTypeOffsetInstList.begin(); it!=GEPTypeOffsetInstList.end(); it++)    {    
         it->second->print(llvm::outs());
@@ -2640,8 +2653,8 @@ int main(int argc, char **argv)
     //saveData(GEPTypeOffsetInstList);
     //restore();
 
-    llvm::outs() << "\n-------------------------------------------------------------------\n";
-    llvm::outs() << "Record " << recorded << " gep_ins,  Ignore " << ignored << " complex gep_ins.\n";
+    llvm::outs() << "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -\n";
+    llvm::outs() << "Record " << recorded << " gep_ins,  Ignore " << ignored << " unhandled gep_ins.\n";
     llvm::outs() << "---------------------------------------------------------------------\n"; 
         //curFref->viewCFG();
         //for (BasicBlock &BB : Func)
