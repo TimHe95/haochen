@@ -61,6 +61,14 @@ extern Module* M;
 #define NO_OFFSET   1024*1024   // represent Single Variable without offset similar to struct-like
 #define ERR_OORANGE     1024*1024   // represent out of range error in iterate vector
 
+/*
+Vector2 operator+(Vector2 a, Vector2 const& b) {
+  // note 'a' is passed by value and thus copied
+  a += b;
+  return a;
+}
+*/
+
 
 bool readConfigVariableNames( std::string, std::vector< struct ConfigVariableNameInfo* >&);
 vector<string> splitWithTag( string, string);
@@ -71,8 +79,10 @@ void handleInstruction(Value*, struct GlobalVariableInfo *, struct InstInfo* , u
 bool findVisitedInstruction(struct InstInfo* , struct InstInfo*);
 struct SrcLoc getSrcLoc(Instruction*);
 bool comesBefore(Instruction* , Instruction* );
-void collectBFSReachableBB( vector<BasicBlock*>&, BasicBlock*);
+void collectBFSReachableBB(vector<BasicBlock*>&, BasicBlock*);
+void collectBFSReachableBB(vector<BasicBlock *>&, BasicBlock*, BasicBlock*);
 void collectDFSReachableBB( vector<BasicBlock*>&, BasicBlock*);
+
 vector<User*> getSequenceUsers(Value*);
 void printSequenceUsers(Value*);
 vector<Use*> getSequenceUses_OnlyGEPins(Value*);
@@ -346,7 +356,7 @@ struct InstInfo
             this->ControllingBBs.push_back(_bbs[i]);
         }
     }
-
+/*
     void setControllingFuncs(vector<Function*> _funcs)
     {
         for(unsigned i=0; i<_funcs.size(); i++)
@@ -355,7 +365,7 @@ struct InstInfo
                 this->ControllingFuncs.push_back(_funcs[i]);
         }
     }
-
+*/
     void addControllingFuncs(Function* _func)
     {
         this->ControllingFuncs.push_back(_func);
@@ -433,18 +443,34 @@ struct GlobalVariableInfo
     struct ConfigVariableNameInfo* NameInfo;
     GlobalVariable* Ptr;
     string GlobalVariableType;  // name info of 
-    vector<unsigned> Offsets;      // indicate the offset of struct field in GEPOperator
+    vector<unsigned> Offsets;   // indicate the offset of struct field in GEPOperator
 
-
+    // every first-user (which is usually an instruction) of this gv(configuration variable)
     std::vector<struct InstInfo *> InstInfoList;
 
+    // all tainted called function starting from each occurance (according to each one in 
+    // `InstInfoList`) of gv.
     std::vector<struct FuncInfo *> FuncInfoList;
 
-    /// TODOHHC
-    vector< pair< pair<Type *, vector<int>> , InstInfo* >> GEPInfoList; // record ALL GEPinstruction to make the anaylze field-sensitive. A little stupid but work.
+    /// TODO: add a mapping between `InstInfoList` and `FuncInfoList` to be more human-friendly.
 
+    // ALL GEPinstruction to make the anaylze field-sensitive. Trade accuracy for completeness.
+    // That is to say, some taint by GEPinstruction anaylze may be false postive.
+    vector< pair< pair<Type *, vector<int>> , InstInfo* >> GEPInfoList; 
 
     std::vector<GlobalVariable*> InfluencedGVList;
+
+    // for every element in `InstInfoList`, it has a set of tainted (or influenced) function.
+    // These functions may need no further traing. They are regarded as the final point for 
+    // the forward tainting.
+    std::map<string, vector<Function *>> InfluencedFuncList;
+
+    // this is for the recording process of `InfluencedFuncList`
+    Function* currentGVStartingFunc = nullptr;
+    string currentGVStartingFuncName;
+
+    // for every element in `InstInfoList`, it has a parent function (->getParent()->getParent()), 
+    // stored here.
     std::vector<Function*> CallerFunctionList;
 
     GlobalVariableInfo() {}
@@ -646,6 +672,19 @@ struct GlobalVariableInfo
         {
             Function* func = *it;
             fout<<"\t\t"<<getOriginalName(func->getName())<<"\n";
+        }
+
+        fout<<"\n\tTainted Functions (group by Caller-Functions): \n\n";
+        for (auto const& x : this->InfluencedFuncList) {
+            fout<<"\t\t"<< x.first <<"\n";
+            set<string> s;
+            for (auto const& y : x.second) {
+                s.insert(getOriginalName(y->getName()));
+            }    
+            for (auto const& z : s) {
+                fout<<"\t\t\t\t"<<z<<"\n";
+            }
+            fout<<"\n";
         }
 
         fout<<"\n\tCalled Functions: \n";
