@@ -711,6 +711,18 @@ void collectDFSReachableBB( vector<BasicBlock*>& children, BasicBlock* bb)
 }
 
 
+
+/**  =====  Simple diff does not work here ====
+ * if(config) {
+ *     xxxx;
+ *     if(yy) {
+ *         return;
+ *     }
+ * } 
+ * zzzz;
+ *   ===========================================
+ */
+
 void collectBFSReachableBB( vector<BasicBlock*>& children, BasicBlock* bb)
 {
     queue<BasicBlock*> Q;
@@ -732,6 +744,41 @@ void collectBFSReachableBB( vector<BasicBlock*>& children, BasicBlock* bb)
                 Q.pop();
             }
             if(std::find(children.begin(), children.end(), succ) != children.end())
+                searchFlag = true;
+            if(searchFlag == false)
+                Q.push(succ);
+        }
+        Q.pop();
+    }
+}
+
+void expandToAllReachableBB(vector<BasicBlock*>& childrens){
+    if(childrens.size()!=2 || childrens[0] == childrens[1]){
+        llvm::outs() << "[ERROR] getOperand(0)/(1), num_op=" << childrens.size() << " (expected: 2), or something wrong here.\n";
+        return;
+    }
+    queue<BasicBlock*> Q;
+    Q.push(childrens[0]);
+    Q.push(childrens[1]);
+    while( !Q.empty() )
+    {
+        BasicBlock* block = Q.front();
+        childrens.push_back(block);
+        
+        for(auto it = succ_begin(block); it != succ_end(block);  ++it)
+        {
+            BasicBlock* succ = *it;
+
+            bool searchFlag = false;
+            for(unsigned i=0; i<Q.size(); ++i) {
+                if(Q.front() == succ)
+                    searchFlag = true;
+                Q.push(Q.front());
+                Q.pop();
+            }
+            // Detect loop.
+            //    if(childrens.find(succ) != childrens.end())            
+            if(std::find(childrens.begin(), childrens.end(), succ) != childrens.end())
                 searchFlag = true;
             if(searchFlag == false)
                 Q.push(succ);
@@ -1726,6 +1773,7 @@ void handleInstruction( Value*                      cur_value,      // one of th
 
         MY_DEBUG( _DEBUG_LEVEL,  printTabs(level+1));
         MY_DEBUG( _DEBUG_LEVEL,  llvm::outs()<<"Num of Successors: "<<branch->getNumSuccessors()<<"\n");
+        
         if( branch->isUnconditional() || branch->getNumSuccessors()!=2)
         {
             MY_DEBUG( _ERROR_LEVEL,  printTabs(level+1));
@@ -1735,17 +1783,35 @@ void handleInstruction( Value*                      cur_value,      // one of th
         }
         else if( branch->isConditional() )
         {
-            /// NOTE: collect all the instructions from two branches, and then find the diff set.
-            vector<BasicBlock*> left_children;
-            vector<BasicBlock*> right_children;
-            collectBFSReachableBB( left_children, branch->getSuccessor(0));
-            collectBFSReachableBB( right_children, branch->getSuccessor(1));
+            /// NOTE: collect all the instructions from two branches, and 
+            ///       then determine if they are tainted.
+            BasicBlock * leftBB = branch->getSuccessor(0);
+            BasicBlock * rightBB = branch->getSuccessor(1);
+            if( leftBB && rightBB && rightBB->getParent() != leftBB->getParent() ){
+                MY_DEBUG( _ERROR_LEVEL,  printTabs(level+1));
+                MY_DEBUG( _ERROR_LEVEL,  llvm::outs()<<"[ERROR] parent of the two children are not expected, RETERN.\n");
+                return;
+            }
 
-            MY_DEBUG( _ERROR_LEVEL,  printTabs(level+1));
-            MY_DEBUG( _ERROR_LEVEL,  llvm::outs()<<"left_children size: "<<left_children.size()<<"\n");
-            MY_DEBUG( _ERROR_LEVEL,  printTabs(level+1));
-            MY_DEBUG( _ERROR_LEVEL,  llvm::outs()<<"right_children size: "<<right_children.size()<<"\n");
+            vector<BasicBlock*> childrens = {leftBB, rightBB};
+            vector<BasicBlock*> taintedBB;
+            expandToAllReachableBB(childrens);
             
+            MY_DEBUG( _ERROR_LEVEL,  printTabs(level+1));
+            MY_DEBUG( _ERROR_LEVEL,  llvm::outs()<<"exp.-to-all children size: "<< childrens.size()<<"\n");
+
+            // HERE, must saitisfy: "leftBB->getParent() == rightBB->getParent()"
+            PostDominatorTree * PDT = new PostDominatorTree(*leftBB->getParent());
+
+            for(vector<BasicBlock*>::iterator iB = childrens.begin(); iB!=childrens.end(); iB++){
+                // *** The core to determine if a BB is tainted -- the "post-dominance" ***
+                if(PDT->dominates(&*(*iB)->begin(), &*leftBB->begin()) || 
+                   PDT->dominates(&*(*iB)->begin(), &*rightBB->begin()) )
+                    continue;
+                else
+                    taintedBB.push_back(*iB);
+            } 
+            /*
             // filter out dup BB in left_children and right_children
             vector<BasicBlock*> diff_bbs;
             for(auto j=left_children.begin(); j!=left_children.end(); j++)
@@ -1760,15 +1826,15 @@ void handleInstruction( Value*                      cur_value,      // one of th
                 if( std::find(left_children.begin(), left_children.end(), bb) == left_children.end())
                     diff_bbs.push_back(bb);
             }
-            
+            */
 
-            if( diff_bbs.empty())
+            if( taintedBB.empty())
             {
                 MY_DEBUG( _ERROR_LEVEL,  printTabs(level+1));
-                MY_DEBUG( _ERROR_LEVEL,  llvm::outs()<<"DFS Differential branches should NOT be empty.\n");
-
+                MY_DEBUG( _ERROR_LEVEL,  llvm::outs()<<"[ERROR] VERY Strange case. None-post-dominant-branches should NOT be empty.\n");
+                return;
                 /// TAG: If condition in for-loop in planner.c:5687:9, how to judge its influential area?
-
+                /*
                 unsigned earlest_merge = max( left_children.size(), right_children.size());
                 for(unsigned j=0; j<left_children.size(); j++ )
                 {
@@ -1808,20 +1874,20 @@ void handleInstruction( Value*                      cur_value,      // one of th
                     MY_DEBUG( _ERROR_LEVEL,  llvm::outs()<<"BFS Differential branches should not be empty.\n");
                     return;
                 }
+                */
             }
             MY_DEBUG( _ERROR_LEVEL,  printTabs(level+1));
-            MY_DEBUG( _ERROR_LEVEL,  llvm::outs()<<"diff_bbs size: "<<diff_bbs.size()<<"\n");
+            MY_DEBUG( _ERROR_LEVEL,  llvm::outs()<<"tainted basic-blocks: "<< taintedBB.size()<<"\n");
 
-            /// TODO: iterate cur_inst_info and its Predecessors to find whether there is used Values in diff_bbs.
-            /// If not, just record diff_bbs as ControllingBBs in BranchInst.
+            /// TODO: iterate cur_inst_info and its Predecessors to find whether there is used Values in taintedBB.
+            ///       If not, just record diff_bbs as ControllingBBs in BranchInst as currently done.
 
-
-            handleControFlowFromBBs(diff_bbs, gv_info, cur_inst_info, level+1);
+            handleControFlowFromBBs(taintedBB, gv_info, cur_inst_info, level+1);
 
             MY_DEBUG( _ERROR_LEVEL,  printTabs(level+1));
             MY_DEBUG( _ERROR_LEVEL,  llvm::outs()<<"This Instruction marked as a ControllingInst 2.\n");
             cur_inst_info->isControllingInst = true;
-            cur_inst_info->setControllingBBs(diff_bbs);
+            cur_inst_info->setControllingBBs(taintedBB);
         } else {
             MY_DEBUG( _ERROR_LEVEL,  printTabs(level+1));
             MY_DEBUG( _DEBUG_LEVEL,  llvm::outs()<<"WTF is this?? check me in line "<< __LINE__ <<".\n");
@@ -2734,6 +2800,7 @@ int main(int argc, char **argv)
      ** NOTE: Now, trace the usage of GlobalVariables related to configs.
      **
      *******************************************************************/
+    startTime = clock();
     visitedStructGVCases.clear();
     for(unsigned gv_cnt=0; gv_cnt<gv_info_list.size(); gv_cnt++){  
 
@@ -2751,7 +2818,11 @@ int main(int argc, char **argv)
         handleUser(gv, gv_info, nullptr, 0);
 
     }
+
     /// NOTE: Record information to 'records.dat' and DEBUG INFO.
+    endTime = clock();
+    llvm::outs() << "\nTainting DONE. ["<< (endTime - startTime) / CLOCKS_PER_SEC << "] secs" << "\n";
+    llvm::outs() << "---------------------------------------------------------------------\n"; 
     string output_file = ir_file.substr( 0, ir_file.find_last_of(".")) + "-records.dat";
     fstream existing_f(output_file.c_str(), fstream::out | ios_base::trunc);
     if( ! existing_f)
