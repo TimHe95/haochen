@@ -1315,7 +1315,7 @@ bool reachable(BasicBlock* FromBB, BasicBlock* ToBB){
 }
 
 bool taintPHINode(PHINode* phi_inst,
-                  PostDominatorTree* PDT,
+                  DominatorTree* DT,
                   BasicBlock* leftBB,
                   BasicBlock* rightBB)
 {
@@ -1325,27 +1325,31 @@ bool taintPHINode(PHINode* phi_inst,
         BasicBlock * preNode = phi_inst->getIncomingBlock(i);
 
         // RULE.left.A
-        if(PDT->dominates( &*(preNode->begin()), &*(leftBB->begin()) ) && 
+        if(DT->dominates( &*(leftBB->begin()), &*(preNode->begin()) ) && 
             !reachable(rightBB, preNode))
         {    
             for(uint j=0; j!=i && j < inBlockNum; j++){
                 BasicBlock * preNode_2 = phi_inst->getIncomingBlock(j);
                 
                 // RULE.left.B
-                if(!PDT->dominates( &*(preNode_2->begin()), &*(leftBB->begin())))
+                if(!DT->dominates( &*(leftBB->begin()), &*(preNode_2->begin()) )){
+                    llvm::outs() << "hehaochen: "<< preNode->getName().str() << " " << preNode_2->getName().str() << "\n";
                     return true;
+                }
             }
         }
         // RULE.right.A
-        if(PDT->dominates( &*(preNode->begin()), &*(rightBB->begin()) ) && 
+        if(DT->dominates( &*(rightBB->begin()), &*(preNode->begin()) ) && 
             !reachable(leftBB, preNode))
         {    
             for(uint j=0; j!=i && j < inBlockNum; j++){
                 BasicBlock * preNode_2 = phi_inst->getIncomingBlock(j);
                 
-                // RULE.left.B
-                if(!PDT->dominates( &*(preNode_2->begin()), &*(rightBB->begin())))
+                // RULE.right.B
+                if(!DT->dominates( &*(rightBB->begin()), &*(preNode_2->begin()))){
+                    llvm::outs() << "zhangyuanliang: "<< preNode->getName().str() << " " << preNode_2->getName().str() << "\n";
                     return true;
+                }
             }
         }
     }
@@ -1356,11 +1360,12 @@ bool taintPHINode(PHINode* phi_inst,
 void handlePHINodesFromBBs(vector<BasicBlock *> &BBsPhi, // candidate BB where we find candidate PHI
                            BasicBlock * leftBB,          // left BB of the `branchInst`
                            BasicBlock * rightBB,         // right BB of the `branchInst`
-                           PostDominatorTree * PDT,      // to calculate the POST-DOMINANCE relation
+                           DominatorTree * DT,      // to calculate the POST-DOMINANCE relation
                            unsigned level,
                            struct GlobalVariableInfo *gv_info, // if a candidate win, use it to trace further.
                            struct InstInfo *cur_inst_info)     // if a candidate win, use it to trace further.
 {
+    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[== " << __func__ << " ==]\n");
 
     // for iteration of all instruction
@@ -1373,12 +1378,13 @@ void handlePHINodesFromBBs(vector<BasicBlock *> &BBsPhi, // candidate BB where w
             if (PHINode *phi_inst = dyn_cast<PHINode>(inst)){
         
                 // CORE: the rule to determine if taint this phi_inst.
-                if(taintPHINode(phi_inst, PDT, leftBB, rightBB)){
+                if(taintPHINode(phi_inst, DT, leftBB, rightBB)){
 
                     struct InstInfo *the_phi_ins = MkNewInstInfoAndLinkOntoPrevInstInfo(phi_inst, cur_inst_info, false);
                     
                     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "A PHI-Node is tainted:\n");
+                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                     MY_DEBUG(_DEBUG_LEVEL, phi_inst->print(llvm::outs()));
                     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "\n");
                     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
@@ -1996,13 +2002,13 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "exp.-to-all children size: " << childrens.size() << "\n");
 
             // HERE, must saitisfy: "leftBB->getParent() == rightBB->getParent()"
-            PostDominatorTree *PDT = new PostDominatorTree(*leftBB->getParent());
+            DominatorTree *DT = new DominatorTree(*leftBB->getParent());
 
             for (vector<BasicBlock *>::iterator iB = childrens.begin(); iB != childrens.end(); iB++)
             {
                 // *** The core to determine if a BB is tainted -- the "post-dominance" ***
-                if (PDT->dominates(&*(*iB)->begin(), &*leftBB->begin()) &&
-                    PDT->dominates(&*(*iB)->begin(), &*rightBB->begin()))
+                if (DT->dominates( &*leftBB->begin(), &*(*iB)->begin()) &&
+                    DT->dominates( &*rightBB->begin(), &*(*iB)->begin()))
                     continue;
                 else
                     taintedBB.push_back(*iB);
@@ -2095,7 +2101,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             handlePHINodesFromBBs(PHIedBB, 
                                   leftBB, 
                                   rightBB, 
-                                  PDT, 
+                                  DT, 
                                   level + 1, 
                                   gv_info, 
                                   cur_inst_info);
