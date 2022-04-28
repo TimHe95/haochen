@@ -718,16 +718,21 @@ void collectBFSReachableBB(vector<BasicBlock *> &children, BasicBlock *bb){
         {
             BasicBlock *succ = *it;
 
+            // to find if `succ` already in Q (i.e., detect loop with 2-3 nodes)
             bool searchFlag = false;
             for (unsigned i = 0; i < Q.size(); ++i)
             {
                 if (Q.front() == succ)
                     searchFlag = true;
+
+                // the only way to iterate the queue.
                 Q.push(Q.front());
                 Q.pop();
             }
+            // to find if `succ` already in `children` (i.e., detect loop with 4-INF nodes)
             if (std::find(children.begin(), children.end(), succ) != children.end())
                 searchFlag = true;
+
             if (searchFlag == false)
                 Q.push(succ);
         }
@@ -1262,7 +1267,137 @@ bool isSubStr(string longstr, string str)
     }
 }
 
-// 1st argument (BBs) is the diff of basic block set that the 3rd argument (cur_inst_info) produces.
+#define PHIBB_UNION
+#undef PHIBB_INTERSECT
+void calcPHIedBB(BasicBlock * left, BasicBlock * right, vector<BasicBlock*> &res){
+    vector<BasicBlock *> left_children, right_children, tmp;
+    collectBFSReachableBB(left_children, left);
+    collectBFSReachableBB(right_children, right);
+
+#ifdef PHIBB_INTERSECT
+    // intersection
+    for(auto &i:left_children){
+        for(auto &j:right_children){
+            if(i==j){
+                res.push_back(i);
+                break;
+            }
+        }
+    }
+#endif
+    
+#ifdef PHIBB_UNION
+    // union
+    tmp.assign(right_children.begin(), right_children.end());
+    for(auto &i:left_children){
+        if(std::find(right_children.begin(), right_children.end(), i) == right_children.end())
+            // left contains but right not contains
+            tmp.push_back(i);
+    }
+#endif
+
+    /// LAST: de-dup
+    for(auto j=tmp.begin(); j!=tmp.end(); j++)
+    {
+        BasicBlock * bb = *j;
+        if(std::find(res.begin(), res.end(), bb) == res.end())
+            res.push_back(bb);
+    }
+}
+
+bool reachable(BasicBlock* FromBB, BasicBlock* ToBB){
+    vector<BasicBlock*> children;
+    collectBFSReachableBB(children, FromBB);
+    if(std::find(children.begin(), children.end(), ToBB) == children.end())
+        return false;
+    else
+        return true;
+}
+
+bool taintPHINode(PHINode* phi_inst,
+                  PostDominatorTree* PDT,
+                  BasicBlock* leftBB,
+                  BasicBlock* rightBB)
+{
+    uint inBlockNum = phi_inst->getNumIncomingValues();
+    /// CORE: the very core tainting rule  
+    for(uint i=0; i<inBlockNum; i++){
+        BasicBlock * preNode = phi_inst->getIncomingBlock(i);
+
+        // RULE.left.A
+        if(PDT->dominates( &*(preNode->begin()), &*(leftBB->begin()) ) && 
+            !reachable(rightBB, preNode))
+        {    
+            for(uint j=0; j!=i && j < inBlockNum; j++){
+                BasicBlock * preNode_2 = phi_inst->getIncomingBlock(j);
+                
+                // RULE.left.B
+                if(!PDT->dominates( &*(preNode_2->begin()), &*(leftBB->begin())))
+                    return true;
+            }
+        }
+        // RULE.right.A
+        if(PDT->dominates( &*(preNode->begin()), &*(rightBB->begin()) ) && 
+            !reachable(leftBB, preNode))
+        {    
+            for(uint j=0; j!=i && j < inBlockNum; j++){
+                BasicBlock * preNode_2 = phi_inst->getIncomingBlock(j);
+                
+                // RULE.left.B
+                if(!PDT->dominates( &*(preNode_2->begin()), &*(rightBB->begin())))
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+// 1nd argument (BBsPhi) is the basic block set that need to be anaylzed for "PHI cases".
+void handlePHINodesFromBBs(vector<BasicBlock *> &BBsPhi, // candidate BB where we find candidate PHI
+                           BasicBlock * leftBB,          // left BB of the `branchInst`
+                           BasicBlock * rightBB,         // right BB of the `branchInst`
+                           PostDominatorTree * PDT,      // to calculate the POST-DOMINANCE relation
+                           unsigned level,
+                           struct GlobalVariableInfo *gv_info, // if a candidate win, use it to trace further.
+                           struct InstInfo *cur_inst_info)     // if a candidate win, use it to trace further.
+{
+    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[== " << __func__ << " ==]\n");
+
+    // for iteration of all instruction
+    for (vector<BasicBlock *>::iterator iB = BBsPhi.begin(); iB != BBsPhi.end(); iB++){
+
+        // traverse each instruction, find PHINode.
+        for (BasicBlock::iterator inst = (*iB)->begin(); inst != (*iB)->end(); inst++){
+        
+            // for the PHINode, determine if should be tainted further.
+            if (PHINode *phi_inst = dyn_cast<PHINode>(inst)){
+        
+                // CORE: the rule to determine if taint this phi_inst.
+                if(taintPHINode(phi_inst, PDT, leftBB, rightBB)){
+
+                    struct InstInfo *the_phi_ins = MkNewInstInfoAndLinkOntoPrevInstInfo(phi_inst, cur_inst_info, false);
+                    
+                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "A PHI-Node is tainted:\n");
+                    MY_DEBUG(_DEBUG_LEVEL, phi_inst->print(llvm::outs()));
+                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "\n");
+                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << the_phi_ins->InstLoc.toString() << "\n");
+
+                    handleUser(phi_inst, gv_info, the_phi_ins, level+1);
+                    /*
+                    vector<User *> users_of_phi = getSequenceUsers(phi_inst);
+                    for (vector<User *>::iterator I_user = users_of_phi.begin(); I_user != users_of_phi.end(); I_user++)
+                        handleInstruction(*I_user, gv_info, the_store_ins, level + 1);
+                    */
+                }
+            }
+        }
+    }
+}
+
+
+// 1st argument (BBs) is the tainted basic block set that the 3rd argument (cur_inst_info) produces.
 // 3rd argument (cur_inst_info) is the branchInst.
 void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                              struct GlobalVariableInfo *gv_info,
@@ -1866,7 +2001,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             for (vector<BasicBlock *>::iterator iB = childrens.begin(); iB != childrens.end(); iB++)
             {
                 // *** The core to determine if a BB is tainted -- the "post-dominance" ***
-                if (PDT->dominates(&*(*iB)->begin(), &*leftBB->begin()) ||
+                if (PDT->dominates(&*(*iB)->begin(), &*leftBB->begin()) &&
                     PDT->dominates(&*(*iB)->begin(), &*rightBB->begin()))
                     continue;
                 else
@@ -1894,8 +2029,8 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[ERROR] VERY Strange case. None-post-dominant-branches should NOT be empty.\n");
                 return;
-                /// TAG: If condition in for-loop in planner.c:5687:9, how to judge its influential area?
                 /*
+                /// TAG: If condition in for-loop in planner.c:5687:9, how to judge its influential area?
                 unsigned earlest_merge = max( left_children.size(), right_children.size());
                 for(unsigned j=0; j<left_children.size(); j++ )
                 {
@@ -1940,12 +2075,40 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "tainted basic-blocks: " << taintedBB.size() << "\n");
 
+            vector<BasicBlock*> PHIedBB;
+            calcPHIedBB(leftBB, rightBB, PHIedBB);
+            if(PHIedBB.empty()){
+                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[NOTE] no PHIed nodes here, i.e., no value's control flow.\n");
+            }
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+#ifdef PHIBB_UNION
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Union ");
+#endif
+#ifdef PHIBB_INTERSECT
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Intersect ");
+#endif
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "PHI-ed basic-blocks: " << PHIedBB.size() << "\n");
+
+            /// currently, we follow phi cases infinitely;  
+            /// TODO: add max limitation on the flow length.
+            handlePHINodesFromBBs(PHIedBB, 
+                                  leftBB, 
+                                  rightBB, 
+                                  PDT, 
+                                  level + 1, 
+                                  gv_info, 
+                                  cur_inst_info);
+
             /// TODO: iterate cur_inst_info and its Predecessors to find whether there is used Values in taintedBB.
             ///       If not, just record diff_bbs as ControllingBBs in BranchInst as currently done.
 
-            /// currently, we only mark functions in the tainted BB,
-            /// TODO: follow phi cases (with max limitation on the flow length).
-            handleControFlowFromBBs(taintedBB, gv_info, cur_inst_info, level + 1);
+            /// currently, we only mark functions in the tainted BB.
+            handleControFlowFromBBs(taintedBB, 
+                                    gv_info, 
+                                    cur_inst_info, 
+                                    level + 1);
+
 
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "This Instruction marked as a ControllingInst 2.\n");
