@@ -2002,13 +2002,25 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "exp.-to-all children size: " << childrens.size() << "\n");
 
             // HERE, must saitisfy: "leftBB->getParent() == rightBB->getParent()"
+            //   the PostDominatorTree is for block-level control dependency
+            //   the DominatorTree is for phi(instruction) level control dependency
             DominatorTree *DT = new DominatorTree(*leftBB->getParent());
+            PostDominatorTree *PDT = new PostDominatorTree(*leftBB->getParent());
 
             for (vector<BasicBlock *>::iterator iB = childrens.begin(); iB != childrens.end(); iB++)
             {
-                // *** The core to determine if a BB is tainted -- the "post-dominance" ***
-                if (DT->dominates( &*leftBB->begin(), &*(*iB)->begin()) &&
-                    DT->dominates( &*rightBB->begin(), &*(*iB)->begin()))
+                /* 
+                 *** The core to determine if a BB is tainted -- the "post-dominance" ***
+                 *        A block Y is control dependent on block X if and only if 
+                 *        Y post dominates at least one but not all successors of X.
+                 *                                relaxed
+                 *        A block Y is dependent on block X if and only if 
+                 *        Y post dominates not all successors of X.
+                 * 
+                 * MoreINFO: https://stackoverflow.com/questions/72052295                        
+                 */
+                if (PDT->dominates( &*(*iB)->begin(), &*leftBB->begin()) &&
+                    PDT->dominates( &*(*iB)->begin(), &*rightBB->begin()))
                     continue;
                 else
                     taintedBB.push_back(*iB);
