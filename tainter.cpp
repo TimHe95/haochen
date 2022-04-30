@@ -1158,80 +1158,6 @@ void traceFunction(struct FuncInfo *func_info)
     }
 }
 
-/// Deprecated
-/*
-bool hasDataflowOut(User* user)
-{
-    queue<User*> Q;
-    vector<User*> visitedUsers;
-    Q.push(user);
-    visitedUsers.push_back(user);
-
-    while( ! Q.empty() )
-    {
-        User* cur_user = Q.front();
-        for(auto it=cur_user->user_begin(); it!=cur_user->user_end(); it++)
-        {
-            User* user = *it;
-            visitedUsers.push_back(user);
-            if(ReturnInst* ret_inst = dyn_cast<ReturnInst>(user))
-            {
-                return true;
-            }
-            else if(BranchInst* branch = dyn_cast<BranchInst>(user))
-            {
-            }
-            else if(SelectInst* select_inst = dyn_cast<SelectInst>(user))
-            {
-            }
-            else if(CallBase* call = dyn_cast<CallBase>(user))
-            {
-
-            }
-        }
-    }
-}
-*/
-/// Deprecated
-/*
-/// OUTPUT: Return true if current argument has a dataflow to the return value of this function.
-void _traceFunction(struct FuncInfo* func_info)
-{
-    if( func_info->ArgIndex >= func_info->Ptr->arg_size() )
-    {
-        func_info->hasInsideDataFlowInfluence = NO;
-        return;
-    }
-
-    Argument* arg = func_info->Ptr->getArg(func_info->ArgIndex);
-    vector<User*> UserVec = getSequenceUsers(arg);
-
-    queue<User*> Q;
-    vector<User*> visitedUsers;
-    for(auto it=UserVec.begin(); it!=UserVec.end(); it++)
-    {
-        if( hasDataflowOut(*it) )
-        {
-            func_info->hasInsideDataFlowInfluence = YES;
-            break;
-        }
-    }
-
-    while( ! Q.empty())
-    {
-        User* cur_user = Q.front();
-        for(auto it=cur_user->user_begin(); it!=cur_user->user_begin(); it++)
-        {
-            User* user = *it;
-            visitedUsers.push_back(user);
-            if(ReturnInst* ret_inst = dyn_cast<ReturnInst>(user))
-            {
-
-            }
-        }
-    }
-}
-*/
 
 struct InstInfo *MkNewInstInfoAndLinkOntoPrevInstInfo(struct Instruction *cur_inst,
                                                       struct InstInfo *prev_inst_info)
@@ -1545,6 +1471,76 @@ unsigned isFuncInfoRecorded(struct FuncInfo *_funcinfo, vector<struct FuncInfo *
     return ERR_OORANGE;
 }
 
+void calcTaintBBfromBr(vector<BasicBlock*> *cur_test_successors, 
+                       vector<BasicBlock*> *cur_br_successors, 
+                       vector<BasicBlock*> *TaintedBBs, 
+                       PostDominatorTree   *PDT)
+{
+    bool stepFurther = false;
+    vector<BasicBlock*> next_test_successors, next_br_successors;
+
+#undef DEBUG_calcTaintBBfromBr
+#ifdef DEBUG_calcTaintBBfromBr
+    llvm::outs() << "  cur_br_successors:  ";
+    for(auto x : *cur_br_successors){
+        llvm::outs() << x->getName() << "\t";
+    }
+    llvm::outs() << "\n";
+
+    llvm::outs() << "cur_test_successors:  ";
+    for(auto x : *cur_test_successors){
+        llvm::outs() << x->getName() << "\t";
+    }
+    llvm::outs() << "\n\n";
+#endif
+    // adding this line of code or not are both OK?
+    next_br_successors.insert(next_br_successors.end(), cur_br_successors->begin(), cur_br_successors->end());
+
+    for(auto cur_br_successors_i : *cur_test_successors){
+
+        // determine if `cur_br_successors_i` is control-flow tainted
+        for(auto cur_br_successors_j : *cur_br_successors){
+
+            // ------- taint! --------
+            // if `cur_br_successors_i` does not post-dominate all successors, it is tainted. (it at least post-dominate itself)
+            if (!PDT->dominates(&*cur_br_successors_i->begin(), &*cur_br_successors_j->begin())){
+
+                if(std::find(TaintedBBs->begin(), TaintedBBs->end(), cur_br_successors_i) == TaintedBBs->end())
+                    TaintedBBs->push_back(cur_br_successors_i);
+
+                // for one step further in CFG.
+                for (BasicBlock *succ_OF_cur_br_successors_i : successors(cur_br_successors_i)){
+
+                    // prevent loop.
+                    if(std::find(cur_br_successors->begin(), cur_br_successors->end(), succ_OF_cur_br_successors_i) == cur_br_successors->end()){
+                        next_br_successors.push_back(succ_OF_cur_br_successors_i);
+                        next_test_successors.push_back(succ_OF_cur_br_successors_i);
+                        stepFurther = true;
+                    }
+                }
+                
+                // this loop is only to determine if `cur_br_successors_i` is tainted or not, once hit, this layer of loop can over.
+                break;
+            }
+
+            // ------- NOT taint! --------
+            // this basic-block post-dominate all basic-blocks in `cur_br_successors`,
+            // in this case, the children of this basic-block either:
+            //     1) post-dominates ALL basic-blocks in `cur_br_successors`, OR
+            //     2) post-dominates NO basic-block in `cur_br_successors`
+        }
+    }
+
+    // if do one step further in CFG.
+    if(!stepFurther){
+        return;
+    }
+
+    // do one step further in CFG.
+    calcTaintBBfromBr(&next_test_successors, &next_br_successors, TaintedBBs, PDT);
+}
+
+
 /**
  *  call in `handleUser`: handleInstruction(cur_value, gv_info, inst_info, level);
  *                                              \___ isa<GlobalVariable>  (maybe)
@@ -1639,6 +1635,16 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "It is a log function, stop. " << func_info->FuncName << ".\n");
             return;
         }
+
+        /// IGNORE: library functions.
+        /*
+        if (std::find(CommonLibFunctions.begin(), CommonLibFunctions.end(), func_info->FuncName) != CommonLibFunctions.end())
+        {
+            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "It is a lib function, need rule. " << func_info->FuncName << ".\n");
+            return;
+        }
+        */
 
         /// NOTE: If this Function has variable arguments' number, maybe we don't need to follow.
         ///       e.g., fun(x, y, ..) / fun(x, y).  Corner cases.
@@ -1955,14 +1961,24 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         if (select_inst->getCondition() != nullptr &&
             select_inst->getCondition() == cur_value)
         {
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "This Instruction marked as a ControllingInst 1.\n");
-            cur_inst_info->isControllingInst = true;
+            // There may be argue further. Should we follow such case? I think yes. because
+            // select is the most simple way to convert configuration variable to other form
+            // of variable. 
+            //    e.g., open_flag = select, srv_unix_file_flush_method==SRV_UNIX_O_DSYNC? O_SYNC : xxx
+            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[Control-Flow WARINING] following a selectInst, where the pre-taint is the condition.\n");
+            handleUser(select_inst, gv_info, cur_inst_info, level + 1);
+
+            // Former way, deprecated.
+            //cur_inst_info->isControllingInst = true;
         }
         else if (select_inst->getTrueValue() != nullptr &&
                      select_inst->getTrueValue() == cur_value ||
                  select_inst->getFalseValue() != nullptr &&
                      select_inst->getFalseValue() == cur_value)
         {
+            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "following a selectInst, where the pre-taint is the if-true/if-false value (this is data-flow).\n");
             handleUser(select_inst, gv_info, cur_inst_info, level + 1);
         }
     }
@@ -1996,8 +2012,11 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
 
             vector<BasicBlock *> childrens = {leftBB, rightBB};
             vector<BasicBlock *> taintedBB;
-            expandToAllReachableBB(childrens);
 
+#undef OLD_JUDGE_TAINT
+#ifdef OLD_JUDGE_TAINT
+            expandToAllReachableBB(childrens);
+#endif
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "exp.-to-all children size: " << childrens.size() << "\n");
 
@@ -2007,24 +2026,31 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             DominatorTree *DT = new DominatorTree(*leftBB->getParent());
             PostDominatorTree *PDT = new PostDominatorTree(*leftBB->getParent());
 
+#ifdef OLD_JUDGE_TAINT
             for (vector<BasicBlock *>::iterator iB = childrens.begin(); iB != childrens.end(); iB++)
             {
                 /* 
                  *** The core to determine if a BB is tainted -- the "post-dominance" ***
                  *        A block Y is control dependent on block X if and only if 
                  *        Y post dominates at least one but not all successors of X.
-                 *                                relaxed
+                 *                                TO
                  *        A block Y is dependent on block X if and only if 
-                 *        Y post dominates not all successors of X.
+                 *        Y post dominates not all successors of X. When encounter
+                 *        a none-control-dependent node, stop determining its children.
                  * 
                  * MoreINFO: https://stackoverflow.com/questions/72052295                        
                  */
+
                 if (PDT->dominates( &*(*iB)->begin(), &*leftBB->begin()) &&
                     PDT->dominates( &*(*iB)->begin(), &*rightBB->begin()))
                     continue;
                 else
                     taintedBB.push_back(*iB);
             }
+#endif
+#ifndef OLD_JUDGE_TAINT
+            calcTaintBBfromBr(&childrens, &childrens, &taintedBB, PDT);
+#endif
             /*
             // filter out dup BB in left_children and right_children
             vector<BasicBlock*> diff_bbs;
@@ -2157,6 +2183,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "ERROR: Default Case in Switch should have only 1 Successor.\n");
             return;
         }
+        ////TODOHHC
 
         vector<BasicBlock *> case_succs;
         for (auto it = switch_inst->case_begin(); it != switch_inst->case_end(); it++)
@@ -2215,8 +2242,13 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         /*
          * Get users of the ReturnInst (which is a CallBase)
          */
+        clock_t startTime, endTime;
+        startTime = clock();
         Function *thisfunc = ret_inst->getFunction();
         vector<pair<CallBase *, Function *> *> callers = getCallerAndCallInst(thisfunc);
+        endTime = clock();
+        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "traversed callgraph for [" << (endTime - startTime) / CLOCKS_PER_SEC << "] secs." << "\n";);
         printCallers(callers, level + 1);
 
         /*
