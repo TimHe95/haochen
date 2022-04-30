@@ -2168,9 +2168,35 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
     else if (SwitchInst *switch_inst = dyn_cast<SwitchInst>(cur_inst))
     {
         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a SwitchInst.\n");
-        /// TODO: I think we should record all the case BBs as influential area.
+        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a SwitchInst, with cases: " << switch_inst->getNumCases() << ", and successors: " << switch_inst->getNumSuccessors() <<"\n");
 
+        // calculated the set of BB should be tainted.
+        vector<BasicBlock*> children, taintedBBs;
+        PostDominatorTree * PDT = new PostDominatorTree(*cur_inst->getParent()->getParent());
+        for(uint i=0; i<switch_inst->getNumSuccessors(); i++){
+            children.push_back(switch_inst->getSuccessor(i));
+        }
+        calcTaintBBfromBr(&children, &children, &taintedBBs, PDT);
+        if (taintedBBs.empty())
+        {
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[ERROR] VERY Strange case. should be at least one element.\n");
+            return;
+        }
+        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "tainted basic-blocks: " << taintedBBs.size() << "\n");
+
+        // handle those BBs.
+        handleControFlowFromBBs(taintedBBs, gv_info, cur_inst_info, level+1);
+
+
+        //------------------- SPLITING ------------- LINE ------------------------
+
+        /// TODOHHC: handle phi here.
+        
+
+        /////// OLD CODE, cover too few cases. commented out
+        /****
         BasicBlock *default_bb = switch_inst->getDefaultDest();
         if (default_bb)
         {
@@ -2183,7 +2209,6 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "ERROR: Default Case in Switch should have only 1 Successor.\n");
             return;
         }
-        ////TODOHHC
 
         vector<BasicBlock *> case_succs;
         for (auto it = switch_inst->case_begin(); it != switch_inst->case_end(); it++)
@@ -2206,6 +2231,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             llvm::outs() << "\n";
         }
         llvm::outs() << "\n\n\n";
+        *****/
     }
     else if (isa<FenceInst>(cur_inst) ||
              isa<AtomicCmpXchgInst>(cur_inst) ||
