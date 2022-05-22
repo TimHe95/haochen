@@ -1246,40 +1246,27 @@ bool taintPHINode(PHINode* phi_inst,
                   BasicBlock* rightBB)
 {
     uint inBlockNum = phi_inst->getNumIncomingValues();
-    /// CORE: the very core tainting rule  
+    uint left_dom=0, right_dom=0;
+
+    /// CORE: exist a successor of “if(config)” which dominates 
+    ///       at least one but not all predecessors of PHI-instruction
+
+    // for every predecessors of PHI-instruction
     for(uint i=0; i<inBlockNum; i++){
+
         BasicBlock * preNode = phi_inst->getIncomingBlock(i);
 
-        // RULE.left.A
-        if(DT->dominates( &*(leftBB->begin()), &*(preNode->begin()) ) && 
-            !reachable(rightBB, preNode))
-        {    
-            for(uint j=0; j!=i && j < inBlockNum; j++){
-                BasicBlock * preNode_2 = phi_inst->getIncomingBlock(j);
-                
-                // RULE.left.B
-                if(!DT->dominates( &*(leftBB->begin()), &*(preNode_2->begin()) )){
-                    llvm::outs() << "hehaochen: "<< preNode->getName().str() << " " << preNode_2->getName().str() << "\n";
-                    return true;
-                }
-            }
+        if( DT->dominates( &*(leftBB->begin()), &*(preNode->begin()) )){
+            left_dom++;
         }
-        // RULE.right.A
-        if(DT->dominates( &*(rightBB->begin()), &*(preNode->begin()) ) && 
-            !reachable(leftBB, preNode))
-        {    
-            for(uint j=0; j!=i && j < inBlockNum; j++){
-                BasicBlock * preNode_2 = phi_inst->getIncomingBlock(j);
-                
-                // RULE.right.B
-                if(!DT->dominates( &*(rightBB->begin()), &*(preNode_2->begin()))){
-                    llvm::outs() << "zhangyuanliang: "<< preNode->getName().str() << " " << preNode_2->getName().str() << "\n";
-                    return true;
-                }
-            }
+        if( DT->dominates( &*(rightBB->begin()), &*(preNode->begin()) )){
+            right_dom++;
         }
     }
-    return false;
+    if(left_dom < inBlockNum && left_dom > 0 || right_dom < inBlockNum && right_dom > 0)
+        return true;
+    else
+        return false;
 }
 
 // 1nd argument (BBsPhi) is the basic block set that need to be anaylzed for "PHI cases".
@@ -1827,7 +1814,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
              *       %b.addr = alloca i32, align 4
              *       store i32* %a, i32** %a.addr, align 8  <------------------- (3) %a.addr is stored with an address - %a (first argument)
              *       store i32 %b, i32* %b.addr, align 4
-             *       %0 = load i32, i32* @sum, align 4, !dbg !942
+             *       %0 = load i32, i32* @CONFIG_VAR, align 4, !dbg !942
              *       %1 = load i32, i32* %b.addr, align 4, !dbg !943
              *       %or = or i32 %0, %1, !dbg !944
              *       %2 = load i32*, i32** %a.addr, align 8, !dbg !945 <-------- (2) %2 is the address stored in %a.addr
@@ -2123,7 +2110,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             calcPHIedBB(leftBB, rightBB, PHIedBB);
             if(PHIedBB.empty()){
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[NOTE] no PHIed nodes here, i.e., no value's control flow.\n");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[NOTE] no PHIed nodes here, i.e., no auxillary data flow.\n");
             }
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
 #ifdef PHIBB_UNION
@@ -2609,7 +2596,7 @@ void handleUser(Value *cur_value,
     {
         MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Come to Global Variable: " << cur_value->getName() << ", stop\n");
         gv_info->InfluencedGVList.push_back(dyn_cast<GlobalVariable>(cur_value));
-        return;
+        //return;
     }
 
     /**
