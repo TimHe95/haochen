@@ -1256,10 +1256,10 @@ bool taintPHINode(PHINode* phi_inst,
 
         BasicBlock * preNode = phi_inst->getIncomingBlock(i);
 
-        if( DT->dominates( &*(leftBB->begin()), &*(preNode->begin()) )){
+        if( DT->dominates( &*(leftBB->begin()), &*(preNode->begin()) ) || leftBB == preNode){
             left_dom++;
         }
-        if( DT->dominates( &*(rightBB->begin()), &*(preNode->begin()) )){
+        if( DT->dominates( &*(rightBB->begin()), &*(preNode->begin()) )  || rightBB == preNode){
             right_dom++;
         }
     }
