@@ -159,6 +159,11 @@ bool readConfigVariableNames(std::string var_file, std::vector<struct ConfigVari
             config_name->VarType = CLASS;
             config_name->ClassName = splitWithTag(var_name, "::");
         }
+        else if (type == "FIELD")
+        {
+            config_name->VarType = FIELD;
+            config_name->FieldName = splitWithTag(var_name, ".");
+        }
 
         config_name->DynamicConfigurableStatus = isDynConfig;
         if (isDynConfig == "Yes" ||
@@ -433,7 +438,13 @@ string getOriginalName(string manglingName)
     return name;
 }
 
-bool handleDIType(DIType *di_type, std::vector<struct ConfigVariableNameInfo *> config_names, GlobalVariable *gv, std::vector<struct GlobalVariableInfo *> &gv_info_list, unsigned config_names_idx, vector<unsigned> offsets, unsigned level)
+bool handleDIType(DIType *di_type, 
+                  std::vector<struct ConfigVariableNameInfo *> config_names, 
+                  GlobalVariable *gv, 
+                  std::vector<struct GlobalVariableInfo *> &gv_info_list, 
+                  unsigned config_names_idx, 
+                  vector<unsigned> offsets, 
+                  unsigned level)
 {
 
     if (!di_type)
@@ -659,7 +670,9 @@ bool handleDIType(DIType *di_type, std::vector<struct ConfigVariableNameInfo *> 
  * @return true
  * @return false
  */
-bool findConfigVariable(std::vector<struct ConfigVariableNameInfo *> config_names, GlobalVariable *gv, std::vector<struct GlobalVariableInfo *> &gv_info_list)
+bool findConfigVariable(std::vector<struct ConfigVariableNameInfo *> config_names, 
+                        GlobalVariable *gv, 
+                        std::vector<struct GlobalVariableInfo *> &gv_info_list)
 {
     MY_DEBUG(_REDUNDENCY_LEVEL, llvm::outs() << "Find whether it is a Config Variable.\n");
     MY_DEBUG(_REDUNDENCY_LEVEL, llvm::outs() << "GlobalVariable:\n\t");
@@ -818,9 +831,9 @@ void collectBFSReachableBB(vector<BasicBlock *> &children, BasicBlock *bb, Basic
  * @param func_info __________|          |
  * @param prev_inst_info ________________|
  */
-void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *prev_inst_info)
+void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *prev_inst_info, uint level)
 {
-    // MY_DEBUG( _DEBUG_LEVEL,  printTabs(level+1));
+    MY_DEBUG( _DEBUG_LEVEL,  printTabs(level+1));
     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[== " << __func__ << " ==]\n");
     /**********************************************************************************************
      **                                                ____ llvm::GlobalValue ____ llvm::GlobalObject ___ llvm:Function
@@ -838,9 +851,25 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
     vector<User *> UserVec = getSequenceUsers(cur_value);
     unsigned user_ite_cnt = 0;
 
+
     for (auto i = UserVec.rbegin(), e = UserVec.rend(); i != e; i++)
     {
         User *cur_user = *i;
+
+        MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Current User: level " << level << "\n");
+        MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "  ↳");
+        MY_DEBUG(_WARNING_LEVEL, cur_user->print(llvm::outs()));
+        if (isa<Instruction>(cur_user))
+        {
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\t");
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
+        }
+        else
+        {
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\n");
+        }
 
         if (Instruction *cur_inst = dyn_cast<Instruction>(cur_user))
         {
@@ -951,26 +980,240 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
 
                 if (func_info->hasInsideDataFlowInfluence == UNDEFINE)
                     // in traceFunction, we use `iterateAndCheck` to determine if there is `hasInsideDataFlowInfluence` outisde to this func.
-                    traceFunction(new_func_info);
+                    traceFunction(new_func_info, level);
 
                 // So if there is no `hasInsideDataFlowInfluence` or no ret val, do not trace return value
                 if (new_func_info->Ptr->getReturnType()->isVoidTy() || new_func_info->hasInsideDataFlowInfluence == NO)
                     continue;
                 else
-                    traceUser(call, new_func_info, inst_info);
+                    traceUser(call, new_func_info, inst_info, level);
             }
             else if (StoreInst *store = dyn_cast<StoreInst>(cur_inst))
             {
                 //////////////////////////
                 /// TODOHHC: do the same thing as in handleInstrcution.
                 //////////////////////////
-                Value *store_addr = store->getPointerOperand(); // e.g.  "store i32 %1, i32* @somevariable"
-                traceUser(store_addr, func_info, inst_info);    //                "@somevariable" should be traced
+                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a StoreInst.\n");
+                // trace the store address of StoreInst.
+                Value *store_addr = store->getPointerOperand();
+
+                /// BUG: `store_addr`'s `Users` *contain* `cur_inst_info->InstPtr` and
+                ///       in `handleUser`, a `if` will continue consequtive StoreInst
+                ////////////////////////////
+                /// TODOHHC
+                ////////////////////////////
+                // getSequenceUses_OnlyGEPins(store_addr);
+                // printSequenceUsers(store_addr);
+                if (GetElementPtrInst *gep_inst = dyn_cast<GetElementPtrInst>(store_addr))
+                {
+
+                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "This StoreInst stores to a address obtained by GetElementPtrInst, ");
+
+                    struct SrcLoc srcloc = getSrcLoc(gep_inst);
+
+                    if (srcloc.filenameHasString("include/c++") || srcloc.dirHasString("include/c++"))
+                    {
+                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "but from CXX library, IGNORE.");
+                    }
+                    else if (!gep_inst->hasIndices() ||
+                            gep_inst->getNumOperands() < 3 ||
+                            !gep_inst->hasAllConstantIndices())
+                    {
+                        /** Good Example:
+                         ** %field_i = getelementptr inbounds %struct.TTT, %struct.TTT* %6, i32 0, i32 8
+                        **                                               |       0        |  1  |  2  |   */
+                        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "but num_op = " << gep_inst->getNumOperands() << " (TODO) or not all indices are constant\n");
+                        MY_DEBUG(_DEBUG_LEVEL, srcloc.print(1));
+                    }
+                    else
+                    {
+                        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Analyzing this GetElementPtrInst.\n");
+
+                        int num = gep_inst->getNumOperands();
+
+                        /// operand 0 (class/struct type)
+                        Type *type = gep_inst->getOperand(0)->getType();
+
+                        /// operand 1-n (all constant operand)
+                        vector<int> indices;
+                        bool ignore = false;
+                        for (int i = 1; i < num; i++)
+                        {
+                            if (ConstantInt *second_offset = dyn_cast<ConstantInt>(gep_inst->getOperand(i)))
+                            {
+                                indices.push_back(second_offset->getSExtValue());
+                            }
+                            else
+                            {
+                                ignore = true;
+                            }
+                        }
+                        // some operand is not constant int, but is int, I don't know why.
+                        if (ignore)
+                        {
+                            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] Ignore this GetElementPtrInst, some operand is not ConstantInt\n");
+                            MY_DEBUG(_DEBUG_LEVEL, gep_inst->print(llvm::outs()));
+                            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "\n");
+                            MY_DEBUG(_DEBUG_LEVEL, srcloc.print(1));
+                        }
+                        else
+                        {
+                            // make this gep_inst into a gep_inst_info, and add this gep_inst_info to the Successors/Predecessor list
+                            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] We can handle this GetElementPtrInst.\n");
+                            struct SrcLoc srcloc = getSrcLoc(gep_inst);
+                            struct InstInfo *inst_info_gep = new InstInfo(gep_inst, srcloc);
+                            inst_info->Successors.push_back(inst_info_gep);
+                            inst_info_gep->Predecessor = inst_info;
+
+                            /*
+                            * Find same type with same offset but not identical gep_inst
+                            * This step is NOT accurate with an assumption that "same type with same offset" is for conf only (if yes).
+                            *
+                            *    1. iterate over all get_inst. find the matched one.
+                            */
+                            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] Finding GetElementPtrInst with same type, same offset, but not identical one.\n");
+                            Value *matched_ins = nullptr;
+                            matched_ins = FetchValue4FurtherFollow(type, &indices, gep_inst);
+                            if (matched_ins == nullptr)
+                            {
+                                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOT FOUND] software store conf to a xxx.yyy but never use it? Strange!.\n");
+                            }
+                            else
+                            {
+                                /*
+                                *    2. add matched_ins_info to list, then follow the matched_ins_info recursively.
+                                */
+                                if (Instruction *matched_instruction = dyn_cast<Instruction>(matched_ins))
+                                {
+                                    /*
+                                    *    2.1.  make this matched_ins into a matched_ins_info, and add this matched_ins_info to the Successors/Predecessor list
+                                    */
+                                    struct SrcLoc srcloc = getSrcLoc(matched_instruction);
+                                    struct InstInfo *inst_info_matched_ins = new InstInfo(matched_instruction, srcloc, false);
+                                    inst_info_gep->Successors.push_back(inst_info_matched_ins);
+                                    inst_info_matched_ins->Predecessor = inst_info_gep;
+                                    /*
+                                    *    2.2.  follow the matched_ins_info recursively.
+                                    */
+                                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[FOUND] Follow this GetElementPtrInst recursively.\n");
+                                    traceUser(matched_instruction, func_info, inst_info_gep, level + 1);
+                                }
+                                else
+                                {
+                                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[WRONG] check me at line " << __LINE__ << "\n");
+                                }
+                            }
+                            // printSequenceUsers(gep_inst->getOperand(0));
+                        }
+                    }
+
+                    /// NOTE: The case we handle here is like:
+                    /*
+                    *  define dso_local void @_Z11testAddressRii(i32* dereferenceable(4) %a, i32 %b) #0 !dbg !935 {
+                    *       entry:                                           \______
+                    *       %a.addr = alloca i32*, align 8                           when caller may give a reference, we need be caution if tainting to it.
+                    *       %b.addr = alloca i32, align 4
+                    *       store i32* %a, i32** %a.addr, align 8  <------------------- (3) %a.addr is stored with an address - %a (first argument)
+                    *       store i32 %b, i32* %b.addr, align 4
+                    *       %0 = load i32, i32* @CONFIG_VAR, align 4, !dbg !942
+                    *       %1 = load i32, i32* %b.addr, align 4, !dbg !943
+                    *       %or = or i32 %0, %1, !dbg !944
+                    *       %2 = load i32*, i32** %a.addr, align 8, !dbg !945 <-------- (2) %2 is the address stored in %a.addr
+                    *       store i32 %or, i32* %2, align 4, !dbg !946 <--------------- (1) when store to %2
+                    */
+                }
+                else if (LoadInst *load_inst = dyn_cast<LoadInst>(store_addr))
+                {
+
+                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Pointer analysis: this StoreInst stores to a address loaded by LoadInst, follow the `addr` of it load from.\n");
+                    Value *load_addr = load_inst->getOperand(0);
+
+                    /// NOTE: `load_addr` is the address where maybe stored an address to (reference to) a caller's variable
+                    ///        but note that if you print the class of `users_of_load_addr`, you may got a 'User::DerivedUser',
+                    ///        which is usually caused by instruction like: "a.addr = alloca i32*, align 8"
+                    vector<User *> users_of_load_addr = getSequenceUsers(load_addr);
+
+                    /// NOTE: Rather than cast `users_of_load_addr` to instruction, we need to search in among the users of
+                    ///       this address to see: if there is a StoreInst ever store something into this address. If yes,
+                    ///       and this StoreInst store the address (which is also a function arguments) to it, then, the taint
+                    ///       is out this function. We need to visit callgraph to follow further in the caller.
+                    for (vector<User *>::iterator I_user = users_of_load_addr.begin(); I_user != users_of_load_addr.end(); I_user++)
+                    {
+
+                        if (StoreInst *sb_store_to_this_addr = dyn_cast<StoreInst>(*I_user))
+                        {
+
+                            if (comesBefore(sb_store_to_this_addr, load_inst))
+                            {
+                                Value *tobe_followed_reference = sb_store_to_this_addr->getOperand(0);
+
+                                /// If hits at least one argument. If yes, visit callgraph to follow further in the caller.
+                                Function *thisFun = load_inst->getFunction();
+                                uint arg_index = 0;
+                                for (Function::arg_iterator arg_iter = thisFun->arg_begin(); arg_iter != thisFun->arg_end(); arg_iter++, arg_index++)
+                                {
+
+                                    if (arg_iter == tobe_followed_reference)
+                                    {
+                                        /*
+                                        * Get users of the ReturnInst (which is a CallBase)
+                                        */
+                                        vector<pair<CallBase *, Function *> *> callers = getCallerAndCallInst(thisFun);
+                                        printCallers(callers, level + 1);
+
+                                        /*
+                                        * For every users (CallBase) of the ReturnInst, trace their correspoding operand (argument).
+                                        */
+                                        for (vector<pair<CallBase *, Function *> *>::iterator i = callers.begin(); i != callers.end(); i++)
+                                        {
+                                            CallBase *caller_inst = (*i)->first;
+                                            struct SrcLoc srcloc = getSrcLoc(caller_inst);
+                                            struct InstInfo *inst_info_caller = new InstInfo(caller_inst, srcloc);
+                                            inst_info->Successors.push_back(inst_info_caller);
+                                            inst_info_caller->Predecessor = inst_info;
+                                            Value *tainted_tobe_followed = caller_inst->getArgOperand(arg_index);
+                                            tainted_tobe_followed->print(llvm::outs());
+                                            llvm::outs() << "\n";
+
+                                            traceUser(tainted_tobe_followed, func_info, inst_info_caller, level + 1);
+                                        }
+                                    }
+                                }
+                            } /// NOTE: NO `else` here, since if not comesBefore, the case can be passed happily.
+
+                        } /// NOTE: NO `else` here, since `handleUser(store_addr, gv_info, cur_inst_info, level+1);` will handle normal cases.
+                    }
+                }
+                else
+                { // May be the class of 'store_addr' is 'User::DerivedUser'. Don't care
+                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Pointer analysis: this StoreInst stores to a address allocated by alloca (User::DerivedUser), so no need pointer analysis futher.\n");
+                }
+
+                /// TODO: fix bug here.
+                traceUser(store_addr, func_info, inst_info, level + 1);
+
+                ///////////////////////////////
+                //Value *store_addr = store->getPointerOperand(); // e.g.  "store i32 %1, i32* @somevariable"
+                //traceUser(store_addr, func_info, inst_info, level);    //                "@somevariable" should be traced
+            /////////////////////////////////////////////////////////////////////////////////////
             }
             else if (isa<FenceInst>(cur_inst) ||
                      isa<AtomicCmpXchgInst>(cur_inst) ||
                      isa<AtomicRMWInst>(cur_inst))
             {
+                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a FenceInst/AtomicCmpXchgInst/AtomicRMWInst, STOP.\n");
             }
             else if (GetElementPtrInst *gep = dyn_cast<GetElementPtrInst>(cur_inst))
@@ -982,17 +1225,17 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                 /// whatever getNumOperands() = 3 or 2, we only trace the base situations.
                 if (gep->getOperand(0) == cur_value)
                 {
-                    traceUser(gep, func_info, inst_info);
+                    traceUser(gep, func_info, inst_info, level);
                 }
                 if (gep->getNumOperands() == 2 && gep->getOperand(1) == cur_value)
                 {
                     inst_info->InfluenceLevel = WEAK;
-                    traceUser(gep, func_info, inst_info);
+                    traceUser(gep, func_info, inst_info, level);
                 }
                 if (gep->getNumOperands() == 3 && (gep->getOperand(1) == cur_value || gep->getOperand(2) == cur_value))
                 {
                     inst_info->InfluenceLevel = WEAK;
-                    traceUser(gep, func_info, inst_info);
+                    traceUser(gep, func_info, inst_info, level);
                 }
             }
             /*
@@ -1003,31 +1246,38 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
             else if (BranchInst *branch = dyn_cast<BranchInst>(cur_inst))
             {
                 /// TODO: Do we only consider dataflow inside Function Tracing?
+                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a BranchInst.\n");
             }
             else if (ResumeInst *resume_inst = dyn_cast<ResumeInst>(cur_inst))
             {
+                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a ResumeInst.\n");
             }
             else if (SwitchInst *switch_inst = dyn_cast<SwitchInst>(cur_inst))
             {
+                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a SwitchInst.\n");
                 /// TODO: I think we should record all the case BBs as influential area.
             }
             else if (CatchSwitchInst *catch_switch = dyn_cast<CatchSwitchInst>(cur_inst))
             {
+                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a CatchSwitchInst.\n");
             }
             else if (CatchReturnInst *catch_return = dyn_cast<CatchReturnInst>(cur_inst))
             {
+                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a CatchReturnInst.\n");
             }
             else if (CleanupReturnInst *cleanup_ret = dyn_cast<CleanupReturnInst>(cur_inst))
             {
+                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a CleanupReturnInst, stop tracing.\n");
             }
             else if (ReturnInst *ret_inst = dyn_cast<ReturnInst>(cur_inst))
             {
+                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a ReturnInst, stop tracing. We will determine if need to trace further from the ret of callcite of Caller Function \n");
 
                 /// NOT_TODO: If the dataflow go to a return value, do we need to continue analyzing the usage of current Caller Function.
@@ -1053,15 +1303,16 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                      isa<FuncletPadInst>(cur_inst) ||
                      isa<LandingPadInst>(cur_inst))
             {
+                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a " << cur_inst->getOpcodeName() << " Instruction.\n");
                 // go further
-                traceUser(cur_inst, func_info, inst_info);
+                traceUser(cur_inst, func_info, inst_info, level);
             }
 
             else
             {
                 // even don't know what is it, just keep tracing
-                traceUser(cur_inst, func_info, inst_info);
+                traceUser(cur_inst, func_info, inst_info, level);
             }
         }
 
@@ -1076,7 +1327,7 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
             /// WHY??????????
             if (gepo->getOperand(0) == cur_value)
             {
-                traceUser(gepo, func_info, prev_inst_info);
+                traceUser(gepo, func_info, prev_inst_info, level);
             }
         }
 
@@ -1121,9 +1372,10 @@ bool iterateAndCheck(struct InstInfo *inst_info)
 }
 
 /// OUTPUT: Return true if current argument has a dataflow to the return value of this function.
-void traceFunction(struct FuncInfo *func_info)
+void traceFunction(struct FuncInfo *func_info, uint level)
 {
-    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[== " << __func__ << " ==]\n");
+    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[-- " << __func__ << " --]\n");
     // I do not think this is possible ?
     //     func_info->Ptr  ~~ Function *
     //     arg_size()  -- number of arguments
@@ -1136,7 +1388,7 @@ void traceFunction(struct FuncInfo *func_info)
      **  llvm::Value <--- llvm::Argument
      *************************************/
     Argument *arg = func_info->Ptr->getArg(func_info->ArgIndex);
-    traceUser(arg, func_info, nullptr);
+    traceUser(arg, func_info, nullptr, level+1);
 
     /*
      * If there exist at least one data flow from one of the function argument to the return value.
@@ -1594,8 +1846,9 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         string func_name = getOriginalName(func->getName());
         unsigned arg_index = getFuncArgIndex(call, cur_value);
         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_REDUNDENCY_LEVEL, llvm::outs() << "Function Name : " << func_name << "\n");
-        MY_DEBUG(_REDUNDENCY_LEVEL, llvm::outs() << "Output: current Arg Index is : " << arg_index << "\n");
+        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Function Name : " << func_name << "\n");
+        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Output: current Arg Index is : " << arg_index << "\n");
 
         /// Record current call information.
         struct FuncInfo *func_info = new FuncInfo(func, func_name, arg_index, cur_inst_info->InstLoc.toString());
@@ -1643,8 +1896,9 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         }
 
         if (func_info->hasInsideDataFlowInfluence == UNDEFINE)
-            traceFunction(func_info);
-
+        {    
+            traceFunction(func_info, level);
+        }
         /// TODO: Do we need to consider Reference Passing in arguments of functions?
         if (func->getReturnType()->isVoidTy() || func_info->hasInsideDataFlowInfluence == NO)
         {
@@ -3064,6 +3318,8 @@ int main(int argc, char **argv)
         if (!findConfigVariable(config_names, gv, gv_info_list))
         {
             MY_DEBUG(_REDUNDENCY_LEVEL, llvm::outs() << "Not a Config Variable\n");
+            //gv->print(llvm::outs());
+            //llvm::outs() << "\n";
             continue;
         }
         else
@@ -3071,6 +3327,16 @@ int main(int argc, char **argv)
             MY_DEBUG(_REDUNDENCY_LEVEL, llvm::outs() << "It is indeed a Config Variable\n");
         }
     }
+    for(uint config_names_idx=0; config_names_idx<config_names.size(); config_names_idx++){
+        if(config_names[config_names_idx]->VarType != FIELD)
+            continue;
+        vector<uint> offsets;
+        offsets.push_back(std::atoi(config_names[config_names_idx]->FieldName[0].c_str()));
+        struct GlobalVariableInfo *gv_info = new GlobalVariableInfo(config_names[config_names_idx], nullptr, offsets);
+        gv_info_list.push_back(gv_info);
+    }
+
+
     /// NOTE: Record config variables found in dbg info.
     string var_found_path = ir_file.substr(0, ir_file.find_last_of(".")) + "-found.txt";
     fstream var_found_f(var_found_path.c_str(), fstream::out | ios_base::trunc);
@@ -3093,9 +3359,13 @@ int main(int argc, char **argv)
         for (auto i = gv_info_list.begin(), e = gv_info_list.end(); i != e; i++) {
             struct GlobalVariableInfo *gv_info = *i;
             gv_info->printNameInfo(1);
-            gv_info->Ptr->print(llvm::outs());
-            llvm::outs() << "\n";
-            if (gv_info->NameInfo->VarType != SINGLE)
+            if(gv_info->Ptr){
+                gv_info->Ptr->print(llvm::outs());
+                llvm::outs() << "\n";
+            }else{
+                llvm::outs() << "This is FIELD type. Not a global variable.\n";
+            }
+            if (gv_info->NameInfo->VarType != SINGLE && gv_info->NameInfo->VarType != FIELD)
                 MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "GV Type: " << gv_info->GlobalVariableType << "\n";);
         })
     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "\n\n\n**********************************************************\n\n\n\n");

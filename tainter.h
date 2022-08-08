@@ -94,7 +94,7 @@ vector<unsigned> getIndexFromGEPO(GEPOperator*);
 bool isMatchedGEPOperator(GEPOperator*, struct GlobalVariableInfo*);
 void printTabs(unsigned);
 unsigned getFuncArgIndex(CallBase*, Value*);
-void traceFunction(struct FuncInfo*);
+void traceFunction(struct FuncInfo*, uint level);
 unsigned isFuncInfoRecorded(struct FuncInfo*, vector<struct FuncInfo*>);
 void traceUser( Value*, struct FuncInfo*, struct InstInfo*);
 string getAsString(Value*);
@@ -216,7 +216,8 @@ enum VariableType
 {
     SINGLE,
     STRUCT,
-    CLASS
+    CLASS,
+    FIELD
 };
 
 
@@ -229,6 +230,8 @@ struct ConfigVariableNameInfo
     vector<string> StructName;
     //for CLASS Type
     vector<string> ClassName;
+    //for FIELD Type
+    vector<string> FieldName;
 
     string OriginalConfigName;
     bool isDynamicConfigurable;
@@ -242,6 +245,7 @@ struct ConfigVariableNameInfo
         this->SingleName = "";
         this->StructName.clear();
         this->ClassName.clear();
+        this->FieldName.clear();
         this->OriginalConfigName = "";
         this->DynamicConfigurableStatus = "";
         // this->found_flag = false;
@@ -268,6 +272,15 @@ struct ConfigVariableNameInfo
                 name = name+"."+this->ClassName[i];
             }
             return name;
+        }
+        else if( this->VarType == FIELD)
+        {
+            string name = this->FieldName[0];
+            for(unsigned i=1; i<this->FieldName.size(); i++)
+            {
+                name = name+"."+this->FieldName[i];
+            }
+            return name;
         } else {
             return "UNSUPPORTED type";
         }
@@ -279,6 +292,7 @@ struct ConfigVariableNameInfo
         this->SingleName = _name_info.SingleName;
         this->StructName = _name_info.StructName;
         this->ClassName = _name_info.ClassName;
+        this->FieldName = _name_info.FieldName;
         // this->found_flag = _name_info.found_flag;
     };
 
@@ -286,7 +300,8 @@ struct ConfigVariableNameInfo
     {
         if( this->SingleName.length() == 0 ||
             this->StructName.size() == 0 ||
-            this->ClassName.size() == 0 )
+            this->ClassName.size() == 0 ||
+            this->FieldName.size() == 0 )
         {
             return false;
         } else 
@@ -480,7 +495,8 @@ struct GlobalVariableInfo
     {
         this->NameInfo = _name_info;
         this->Ptr = _ptr;
-        this->GlobalVariableType = getStructTypeStrFromPrintAPI(_ptr->getType());
+        if(_ptr)
+            this->GlobalVariableType = getStructTypeStrFromPrintAPI(_ptr->getType());
         for(auto it=_offsets.begin(); it!=_offsets.end(); it++)
         {
             this->Offsets.push_back(*it);
