@@ -251,6 +251,22 @@ struct ConfigVariableNameInfo
         // this->found_flag = false;
     }
 
+    string getNameAsStringPrefix()
+    {
+        string name;
+        if(this->VarType == SINGLE)
+            name = this->SingleName;
+        else if( this->VarType == STRUCT)
+            name = this->StructName[0];
+        else if( this->VarType == CLASS)
+            name = this->ClassName[0];
+        else if( this->VarType == FIELD)
+            name = this->FieldName[0];
+        else
+            name = "UNSUPPORTED type";
+        return name;
+    }
+
     string getNameAsString()
     {
         if(this->VarType == SINGLE)

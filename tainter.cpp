@@ -44,6 +44,32 @@ Value *FetchValue4FurtherFollow(Type *type, vector<int> *indice, Value *get_inst
     return match_value;
 };
 
+/// Fetch the instrcution who use the result a GEP inst. who fetches the type "Type*" with offsets "vector<int>"
+vector<Value *> FetchValue4FurtherFollow2(string type, vector<int> *indice)
+{
+    vector<Value *> res;
+    // pair<pair<Type *, vector<int>>, Value*> * GEPInfo){
+    Value *match_value = nullptr;
+    for (vector<pair<pair<Type *, vector<int>>, Value *>>::iterator i = GEPTypeOffsetInstList.begin(); i != GEPTypeOffsetInstList.end(); i++)
+    {
+        string fulltype = "%struct." + type + "*";
+        std::string type_str;
+        llvm::raw_string_ostream rso(type_str);
+        i->first.first->print(rso);
+        // **** DEBUG ****
+        //llvm::outs() << rso.str() << "  " << fulltype << "\n";
+        if (rso.str() != fulltype) // Type* not match
+            continue;
+        if (i->first.second != *indice) // offset not match
+            continue;
+        //if (i->second == get_inst) // this gep_ins has been recorded before, by using the "addr" of store_ins
+        //    continue;
+        match_value = i->second;
+        res.push_back(match_value);
+    }
+    return res;
+};
+
 void initCommonLibFunctions()
 {
     /// PostgreSQL's log functions.
@@ -2839,14 +2865,73 @@ void handleUser(Value *cur_value,
     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[== " << __func__ << " ==]\n");
 
-    if (!cur_value)
+    if (!cur_value && level>0)
         return;
+    else if (!cur_value && level==0){
+        /*
+        * ========== FIELD case ==========
+        * Find same type with same offset but not identical gep_inst
+        * This step is NOT accurate with an assumption that "same type with same offset" is for conf only (if yes).
+        *
+        *    1. iterate over all get_inst. find the matched one.
+        */
+        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Entry point of non-global pointer parameter.\n");
+        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] Finding GetElementPtrInst with same type, same offset, but not identical one.\n");
+        Value *matched_ins = nullptr;
+        vector<int> indices;
+        vector<Value *> matched_inss;
+        indices.push_back(0);
+        indices.push_back(gv_info->Offsets[0]);
+        matched_inss = FetchValue4FurtherFollow2(gv_info->NameInfo->getNameAsStringPrefix(), &indices);
+        if(matched_inss.size()==0){
+            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[WARNING] Not found use of "<< gv_info->NameInfo->getNameAsString() <<". Check *-parameter.txt file\n");
+            return;
+        }
+        for(auto matched_ins:matched_inss)
+        {
+            if (matched_ins == nullptr)
+            {
+                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[ERROR] current matched_ins is null. Next matched_ins.\n");
+                continue;
+            }
+            else
+            {
+                /*
+                *    2. add matched_ins_info to list, then follow the matched_ins_info recursively.
+                */
+                if (Instruction *matched_instruction = dyn_cast<Instruction>(matched_ins))
+                {
+                    /*
+                    *    2.1.  make this matched_ins into a matched_ins_info
+                    */
+                    struct SrcLoc srcloc = getSrcLoc(matched_instruction);
+                    struct InstInfo *inst_info_matched_ins = new InstInfo(matched_instruction, srcloc, false);
+                    /*
+                    *    2.2.  follow the matched_ins_info recursively.
+                    */
+                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[FOUND] Follow this GetElementPtrInst recursively.\n");
+                    handleUser(matched_instruction, gv_info, nullptr, level + 1);
+                }
+                else
+                {
+                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[WRONG] check me at line " << __LINE__ << "\n");
+                }
+            }
+        }
+        return;
+    }
 
     /**
      ** NOTE: If goto a global variable, we treat that gv's influencial zone is included by current gv.
      **       So we record it, and stop visiting its Users.
      **/
-    if (cur_value != gv_info->Ptr && isa<GlobalVariable>(cur_value))
+    if (gv_info->Ptr && cur_value != gv_info->Ptr && isa<GlobalVariable>(cur_value))
     {
         MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Come to Global Variable: " << cur_value->getName() << ", stop\n");
         gv_info->InfluencedGVList.push_back(dyn_cast<GlobalVariable>(cur_value));
@@ -2909,7 +2994,8 @@ void handleUser(Value *cur_value,
              ** CONTINUE: If the first User is a StoreInst targeting GV,
              **           it should be an assignment, we don't follow it.
              **/
-            if (!prev_inst_info &&                                                            // if is the first User
+            if (gv_info->Ptr &&                                                               // if null, the "FIELD" case
+                !prev_inst_info &&                                                            // if is the first User
                 isa<StoreInst>(inst_info->InstPtr) &&                                         // if is a StoreInst
                 dyn_cast<StoreInst>(inst_info->InstPtr)->getPointerOperand() == gv_info->Ptr) // if store to GV
             {
@@ -3327,11 +3413,12 @@ int main(int argc, char **argv)
             MY_DEBUG(_REDUNDENCY_LEVEL, llvm::outs() << "It is indeed a Config Variable\n");
         }
     }
+    /// ======= FIELD ========
     for(uint config_names_idx=0; config_names_idx<config_names.size(); config_names_idx++){
         if(config_names[config_names_idx]->VarType != FIELD)
             continue;
         vector<uint> offsets;
-        offsets.push_back(std::atoi(config_names[config_names_idx]->FieldName[0].c_str()));
+        offsets.push_back(std::atoi(config_names[config_names_idx]->FieldName[1].c_str()));
         struct GlobalVariableInfo *gv_info = new GlobalVariableInfo(config_names[config_names_idx], nullptr, offsets);
         gv_info_list.push_back(gv_info);
     }
@@ -3360,10 +3447,11 @@ int main(int argc, char **argv)
             struct GlobalVariableInfo *gv_info = *i;
             gv_info->printNameInfo(1);
             if(gv_info->Ptr){
+                llvm::outs() << "                      ";
                 gv_info->Ptr->print(llvm::outs());
                 llvm::outs() << "\n";
             }else{
-                llvm::outs() << "This is FIELD type. Not a global variable.\n";
+                llvm::outs() << "\t\tThis is FIELD type. Not a global variable.\n";
             }
             if (gv_info->NameInfo->VarType != SINGLE && gv_info->NameInfo->VarType != FIELD)
                 MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "GV Type: " << gv_info->GlobalVariableType << "\n";);
