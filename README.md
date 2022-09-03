@@ -34,6 +34,13 @@ In section **`4.1 Test Input Generation`**, we mention that `S3M` focuses on fou
      we check if:
       <img width="400" alt="截屏2022-09-03 16 07 53" src="https://user-images.githubusercontent.com/18543932/188262045-11a5b2c0-48a3-4cf5-9039-077f8ffffb7c.png">
 
+### Control flow
+
+Formaly define how the control flow:
+ - **Control Dependency**: A block **Y** is control dependent on block **X** if and only if: **Y** post-dominates at least one but not all successors of **X**. 
+   - **Transitivity**：if **A** control dependent on **B**, **B** control dependent on **C**, then **A** control dependent on **C**.
+
+An example, where the yellow square indicats the complicated code structures that motivate the use of the formal definition.  
 
    
 ## Usage
