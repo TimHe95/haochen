@@ -20,12 +20,18 @@ In section **`4.1 Test Input Generation`**, we mention that `S3M` focuses on fou
    <img width="250" alt="截屏2022-09-03 15 27 06" src="https://user-images.githubusercontent.com/18543932/188260809-360ee1bd-6966-4fa7-80fe-7c5a290174be.png">
  - **Field sensitive analysis**  
    <img width="582" alt="截屏2022-09-03 15 44 43" src="https://user-images.githubusercontent.com/18543932/188261335-a40776f5-6a85-4224-90a1-157dd872b1fb.png">
- - **Inter-procedure (with pointer)  **
+ - **Inter-procedure (with pointer)**  
    <img width="417" alt="截屏2022-09-03 15 53 39" src="https://user-images.githubusercontent.com/18543932/188261592-d35d625b-e808-4f43-9a01-01a431ed94bb.png">  
-   <img width="417" alt="截屏2022-09-03 16 02 01" src="https://user-images.githubusercontent.com/18543932/188261868-e32bc710-4e42-4dfb-be9a-a6dfc957211b.png"> 
- - Our extended data-flow (`phi-node`)  
+   <img width="417" alt="截屏2022-09-03 16 02 01" src="https://user-images.githubusercontent.com/18543932/188261868-e32bc710-4e42-4dfb-be9a-a6dfc957211b.png">
+ - **Our extended data-flow (`phi-node`)**  
    <img width="600" alt="截屏2022-09-03 16 06 28" src="https://user-images.githubusercontent.com/18543932/188262007-992034c9-a3d2-4fce-96e3-2cc85589dae3.png">  
    - How to formaly determine if a `phi-node` will be tainted  
+     Given a `phiNode` like:
+     ```
+        phi i32 [ %5, %bb1.i ], [ 0, %bb1 ]
+                   pre_node      pre_node2
+     ```
+     we check if:
       <img width="400" alt="截屏2022-09-03 16 07 53" src="https://user-images.githubusercontent.com/18543932/188262045-11a5b2c0-48a3-4cf5-9039-077f8ffffb7c.png">
 
 
