@@ -41,6 +41,7 @@ Formaly define how the control flow:
    - **Transitivity**：if **A** control dependent on **B**, **B** control dependent on **C**, then **A** control dependent on **C**.
 
 An example, where the yellow square indicats the complicated code structures that motivate the use of the formal definition.  
+<img width="1000" alt="截屏2022-09-03 16 39 03" src="https://user-images.githubusercontent.com/18543932/188263144-892a1294-d302-4dea-82bb-eedd21f18e78.png">
 
    
 ## Usage
