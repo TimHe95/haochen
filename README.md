@@ -4,6 +4,12 @@
 
 <img width="412" alt="截屏2022-09-03 12 02 02" src="https://user-images.githubusercontent.com/18543932/188259997-0e1b7269-9e90-41a6-b153-edeeeb4c47ca.png">
 
+In section **`4.1 Test Input Generation`**, we mention that `S3M` focuses on four series of syscalls, theay are obtained by our manual investigation on every Linux syscall (335 found in kernel version 5.4.0) by reading the official manual, followed by cross-checking. The filtered out 21 syscalls that may affect I/O size, parallelism, and sequentiality:
+
+| **read series**                                                                                | **write series**                                                                                    | **sync series**                                        | **thread series**              |
+|------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|--------------------------------------------------------|--------------------------------|
+| `read` `pread64` `readv` `preadv` `preadv2` `io_submit` `io_getevents` `madvise` `open` `mmap` | `write` `pwrite64` `writev` `pwritev` `pwritev2` `io_submit` `io_getevents` `madvise` `open` `mmap` | `fsync` `fdatasync` `syncfs` `sync_file_range` `fcntl` | `clone(pthread_create)` `fork` |
+
 ## Dependency
 
  - llvm-10.0.0
