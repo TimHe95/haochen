@@ -1,9 +1,13 @@
-# confTainter
+# confSysTaint
+
+`confSysTaint` is the core of `S3M`, `confSysTaint` is based on LLVM IR, it analyzes the control and data dependency between configuration variable and specific syscalls. An example shows how it works:
+
+<img width="412" alt="截屏2022-09-03 12 02 02" src="https://user-images.githubusercontent.com/18543932/188259997-0e1b7269-9e90-41a6-b153-edeeeb4c47ca.png">
 
 ## Dependency
-```
-llvm-10.0.0
-```
+
+ - llvm-10.0.0
+ - [gllvm](https://github.com/SRI-CSL/gllvm) 
 
 ## Build
 ```
@@ -17,6 +21,8 @@ make
 cd test/demo
 ../../tainter test.bc test-var.txt
 ```
+For real DBMS, use `gllvm` to obtain the `.bc` file (e.g., mysqld.bc).
+
 ## Check results
 ```
 cat test-records.dat
