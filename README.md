@@ -93,10 +93,9 @@ Tainted Functions (group by Caller-Functions):
     
 ### 注意事项
 
- -（1）所测配置是否在待分析的IR中。方法是：在源码中搜索配置名称。至少能搜到配置。如果能搜到，也要看搜到的东西是不是c文件或者h文件，不能只是一个template代码或者测试代码匹配到了；**同时**，上网搜索一下配置文档，至少这个配置不是那种需要额外后期手动安装的插件里的配置（例如字眼“These variables are unavailable unless the appropriate server-side plugin is installed”）
+ - （1）所测配置是否在待分析的IR中。方法是：在源码中搜索配置名称。至少能搜到配置。如果能搜到，也要看搜到的东西是不是c文件或者h文件，不能只是一个template代码或者测试代码匹配到了；**同时**，上网搜索一下配置文档，至少这个配置不是那种需要额外后期手动安装的插件里的配置（例如字眼“These variables are unavailable unless the appropriate server-side plugin is installed”）
 
- -（2）程序中的配置变量名是否正确。有些变量是全局变量，比较好指定，但有些是结构体成员，需要人工判别。比如`STRUCT System_variables.bulk_insert_buff_size`和
+ - （2）程序中的配置变量名是否正确。有些变量是全局变量，比较好指定，但有些是结构体成员，需要人工判别。比如`STRUCT System_variables.bulk_insert_buff_size`和
 `STRUCT System_variables.histogram_generation_max_mem_size`
 
- -（3）编译**目标待测软件**过程是否有问题：版本llvm10.0.0；选项`-O0`、`-fno-discard-value-names`、`-g`；如果需要分析“phi对数据流的加强”，还需要加上另外[两个选项](https://stackoverflow.com/questions/72123225)
-```
+ - （3）编译**目标待测软件**过程是否有问题：版本llvm10.0.0；选项`-O0`、`-fno-discard-value-names`、`-g`；如果需要分析“phi对数据流的加强”，还需要加上另外[两个选项](https://stackoverflow.com/questions/72123225)
