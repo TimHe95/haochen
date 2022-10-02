@@ -104,7 +104,7 @@ Tainted Functions (group by Caller-Functions):
  - `SINGLE CONF_VAR_NAME` global variable with basic type (`int`, `bool`, etc.)
  - `STRUCT CONF_VAR_STRUCT.FIELD_NAME` **global** struct with field
  - `CLASS CONF_VAR_CLASS.FIELD_NAME` **global** class with field
- - `FIELD CONF_VAR_TPYE.FIELD_COUNT` **any** ID of field of specified type, for example, use `FIELD some_type.2` to make `some_type.field_C` as the entry point.  
+ - `FIELD CONF_VAR_TPYE.FIELD_COUNT` **any** field of specified type, for example, use `FIELD some_type.2` to make `some_type.field_C` as the entry point.  
     ```
     STRUCT some_type{
        int field_A;
@@ -112,3 +112,9 @@ Tainted Functions (group by Caller-Functions):
        float field_C;
     }
     ```
+
+### How to debug:
+ 1. If the entry you specified in `*-parameter.txt` does not produce any results, try to find if the configuration variable is rightly in `*.bc`
+   - For example, if you use `FIELD System_variables.45` to specify configuration `System_variables.preload_buff_size`, then you need to make sure command `grep "getelementptr inbounds %struct.System_variables" mysqld.ll` produce the right results like `%xx = getelementptr inbounds %struct.System_variables, %struct.System_variables* %xx, i64 0, i32 45, !dbg !xxx` where `i64 0, i32 45` must appear.
+   - If you use `SINGLE srv_unix_file_flush_method` to specify configuration `innodb_flush_method`, things will be easier: use `grep "srv_unix_file_flush_method" mysqld.ll` to see if something like `%xx = load i32, i32* @srv_unix_file_flush_method, align 4, !dbg xxxx` appears.
+   - If all the `stdout` log shows that all the `DIRECT use` of `STRUCT xxx.yyy` is `[PASS]` 
