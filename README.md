@@ -102,9 +102,9 @@ Tainted Functions (group by Caller-Functions):
 
 ### Specify the entry configuration variable
  - `SINGLE CONF_VAR_NAME` global variable with basic type (`int`, `bool`, etc.)
- - `STRUCT CONF_VAR_STRUCT.FIELD_NAME` global struct with field
- - `CLASS CONF_VAR_CLASS.FIELD_NAME` global class with field
- - `FIELD CONF_VAR_TPYE.FIELD_COUNT` any ID of field of specified type, for example, use `FIELD some_type.2` to make `some_type.field_C` as the entry point.  
+ - `STRUCT CONF_VAR_STRUCT.FIELD_NAME` **global** struct with field
+ - `CLASS CONF_VAR_CLASS.FIELD_NAME` **global** class with field
+ - `FIELD CONF_VAR_TPYE.FIELD_COUNT` **any** ID of field of specified type, for example, use `FIELD some_type.2` to make `some_type.field_C` as the entry point.  
     ```
     STRUCT some_type{
        int field_A;
