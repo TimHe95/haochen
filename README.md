@@ -115,6 +115,24 @@ Tainted Functions (group by Caller-Functions):
 
 ### How to debug:
  1. If the entry you specified in `*-parameter.txt` does not produce any results, try to find if the configuration variable is rightly in `*.bc`
-   - For example, if you use `FIELD System_variables.45` to specify configuration `System_variables.preload_buff_size`, then you need to make sure command `grep "getelementptr inbounds %struct.System_variables" mysqld.ll` produce the right results like `%xx = getelementptr inbounds %struct.System_variables, %struct.System_variables* %xx, i64 0, i32 45, !dbg !xxx` where `i64 0, i32 45` must appear.
-   - If you use `SINGLE srv_unix_file_flush_method` to specify configuration `innodb_flush_method`, things will be easier: use `grep "srv_unix_file_flush_method" mysqld.ll` to see if something like `%xx = load i32, i32* @srv_unix_file_flush_method, align 4, !dbg xxxx` appears.
-   - If all the `stdout` log shows that all the `DIRECT use` of `STRUCT xxx.yyy` is `[PASS]` 
+    ```
+    ########
+    ## Example empty result: content of "*-record.dat"
+    ########
+    
+    GlobalVariable Name: System_variables.45  Offset: 45 
+
+    Caller Functions: 
+
+    Tainted Functions (group by Caller-Functions): 
+
+
+    Called Functions: 
+
+    Called Chain:
+
+    Related GlobalVariables: 
+    ```
+    - For example, if you use `FIELD System_variables.45` to specify configuration `System_variables.preload_buff_size`, then you need to make sure command `grep "getelementptr inbounds %struct.System_variables" mysqld.ll` produce the right results like `%xx = getelementptr inbounds %struct.System_variables, %struct.System_variables* %xx, i64 0, i32 45, !dbg !xxx` where `i64 0, i32 45` must appear.  
+    - If you use `SINGLE srv_unix_file_flush_method` to specify configuration `innodb_flush_method`, things will be easier: use `grep "srv_unix_file_flush_method" mysqld.ll` to see if something like `%xx = load i32, i32* @srv_unix_file_flush_method, align 4, !dbg xxxx` appears.  
+    - If all the `stdout` log shows that all the `DIRECT use` of `STRUCT xxx.yyy` is `[OK, PASS]`, it may be because `xxx` is not global, or some other reasons. Try to use `FIELD xxx.0` (say `yyy` is the very first field of `xxx`)  
