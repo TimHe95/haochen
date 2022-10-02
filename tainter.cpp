@@ -26,6 +26,20 @@ vector<
          Value *>>
     GEPTypeOffsetInstList; // record ALL GEPinstruction to make the anaylze field-sensitive. A little stupid but work.
 
+bool isSubStr(string longstr, string str)
+{
+    int index = longstr.find(str);
+    if (index != string::npos)
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+
 /// Fetch the instrcution who use the result a GEP inst. who fetches the type "Type*" with offsets "vector<int>"
 Value *FetchValue4FurtherFollow(Type *type, vector<int> *indice, Value *get_inst)
 {
@@ -44,6 +58,7 @@ Value *FetchValue4FurtherFollow(Type *type, vector<int> *indice, Value *get_inst
     return match_value;
 };
 
+
 /// Fetch the instrcution who use the result a GEP inst. who fetches the type "Type*" with offsets "vector<int>"
 vector<Value *> FetchValue4FurtherFollow2(string type, vector<int> *indice)
 {
@@ -52,14 +67,25 @@ vector<Value *> FetchValue4FurtherFollow2(string type, vector<int> *indice)
     Value *match_value = nullptr;
     for (vector<pair<pair<Type *, vector<int>>, Value *>>::iterator i = GEPTypeOffsetInstList.begin(); i != GEPTypeOffsetInstList.end(); i++)
     {
-        string fulltype = "%struct." + type + "*";
+        //string fulltype = "%struct." + type;
+        string fulltype = '.' + type;
         std::string type_str;
         llvm::raw_string_ostream rso(type_str);
         i->first.first->print(rso);
         // **** DEBUG ****
         //llvm::outs() << rso.str() << "  " << fulltype << "\n";
-        if (rso.str() != fulltype) // Type* not match
+        if (!isSubStr(rso.str(), fulltype)) // Type* not match 
+        //rso.str() != fulltype.isSubStr())
             continue;
+
+        llvm::outs() << "  Type matched, with offsets: [ ";
+        for (auto each:i->first.second)
+            llvm::outs() << each << " ";
+        llvm::outs() << "]   Target offsets: [ ";
+        for (auto each2:*indice)
+            llvm::outs() << each2 << " ";
+        llvm::outs() << "], if equal to target, found.\n";
+        
         if (i->first.second != *indice) // offset not match
             continue;
         //if (i->second == get_inst) // this gep_ins has been recorded before, by using the "addr" of store_ins
@@ -241,6 +267,7 @@ struct SrcLoc getSrcLoc(Instruction *inst)
     struct SrcLoc srcloc(filename, dirname, line, col);
     return srcloc;
 }
+
 
 void remove_char(string &str, char ch)
 {
@@ -468,7 +495,7 @@ bool handleDIType(DIType *di_type,
                   std::vector<struct ConfigVariableNameInfo *> config_names, 
                   GlobalVariable *gv, 
                   std::vector<struct GlobalVariableInfo *> &gv_info_list, 
-                  unsigned config_names_idx, 
+                  unsigned config_names_idx, // max value of what? asked by hhc.
                   vector<unsigned> offsets, 
                   unsigned level)
 {
@@ -478,7 +505,8 @@ bool handleDIType(DIType *di_type,
 
     bool ret_flag = false;
 
-    if (config_names_idx != ERR_OORANGE && level != ERR_OORANGE)
+    if (config_names_idx != ERR_OORANGE && 
+                   level != ERR_OORANGE)
     {
         MY_DEBUG(_REDUNDENCY_LEVEL, llvm::outs() << "FullName: " << config_names[config_names_idx]->getNameAsString() << "\n");
         if (level < config_names[config_names_idx]->StructName.size())
@@ -494,18 +522,20 @@ bool handleDIType(DIType *di_type,
     if (DIBasicType *basic_type = dyn_cast<DIBasicType>(di_type))
     {
         if (config_names_idx != ERR_OORANGE && config_names[config_names_idx]->VarType != SINGLE)
+        //if (config_names_idx != ERR_OORANGE && config_names[config_names_idx]->VarType == STRUCT)
         {
             MY_DEBUG(_REDUNDENCY_LEVEL, llvm::outs() << "Comes here 3\n");
             ret_flag = true;
             struct GlobalVariableInfo *gv_info = new GlobalVariableInfo(config_names[config_names_idx], gv, offsets);
             gv_info_list.push_back(gv_info);
         }
-        else
+        else 
+        //else if (config_names[config_names_idx]->VarType == SINGLE)
         {
             MY_DEBUG(_REDUNDENCY_LEVEL, llvm::outs() << "basic type gv name: " << gv->getName() << " -> " << getOriginalName(gv->getName()) << "\n");
             for (unsigned i = 0; i < config_names.size(); i++)
             {
-                if (config_names[i]->VarType == STRUCT)
+                if (config_names[i]->VarType == STRUCT || config_names[i]->VarType == FIELD)
                     continue;
 
                 if (getOriginalName(gv->getName().str()) == config_names[i]->SingleName)
@@ -516,6 +546,10 @@ bool handleDIType(DIType *di_type,
                 }
             }
         }
+        //else{
+        //    ret_flag = true;
+        //    return ret_flag;
+        //}
     }
 
     else if (DIDerivedType *derived_type = dyn_cast<DIDerivedType>(di_type))
@@ -638,7 +672,7 @@ bool handleDIType(DIType *di_type,
         }
         else if (compose_type->getTag() == llvm::dwarf::DW_TAG_class_type)
         {
-            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "class type compose_type name: " << compose_type->getName() << "\n");
+            MY_DEBUG(_REDUNDENCY_LEVEL, llvm::outs() << "class type compose_type name: " << compose_type->getName() << "\n");
             for (unsigned i = 0; i < config_names.size(); i++)
             {
 
@@ -671,7 +705,7 @@ bool handleDIType(DIType *di_type,
         }
         else if (compose_type->getTag() == llvm::dwarf::DW_TAG_enumeration_type)
         {
-            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "enum type compose_type name: " << compose_type->getName() << "\n");
+            MY_DEBUG(_REDUNDENCY_LEVEL, llvm::outs() << "enum type compose_type name: " << compose_type->getName() << "\n");
             DIType *base_type = compose_type->getBaseType();
             handleDIType(base_type, config_names, gv, gv_info_list, config_names_idx, offsets, level);
         }
@@ -1458,19 +1492,6 @@ struct InstInfo *MkNewInstInfoAndLinkOntoPrevInstInfo(struct Instruction *cur_in
     return cur_inst_info;
 }
 
-bool isSubStr(string longstr, string str)
-{
-    int index = longstr.find(str);
-    if (index != string::npos)
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
-}
-
 #define PHIBB_UNION
 #undef PHIBB_INTERSECT
 void calcPHIedBB(BasicBlock * left, BasicBlock * right, vector<BasicBlock*> &res){
@@ -2189,7 +2210,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         // HERE, is the code support TTT.fieldConfig as entry.
         if (cur_inst_info->Predecessor == nullptr)
         {
-            if (isMatchedGEPOperator(dyn_cast<GEPOperator>(gep), gv_info))
+            if (isMatchedGEPOperator(dyn_cast<GEPOperator>(gep), gv_info, level))
             {
                 MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Found start point of config: " << gv_info->NameInfo->getNameAsString() << "\n");
                 visitedStructGVCases.push_back(cur_inst);
@@ -2811,7 +2832,7 @@ bool findVisitedInstruction(struct InstInfo *inst_info, struct InstInfo *prev_in
     return false;
 }
 
-bool isMatchedGEPOperator(GEPOperator *gepo, struct GlobalVariableInfo *gv_info) {
+bool isMatchedGEPOperator(GEPOperator *gepo, struct GlobalVariableInfo *gv_info, int level) {
 
     /// NOTE: if this is the start point of structural GVs' gep instruction, check and follow.
     if (gv_info->NameInfo->VarType == STRUCT &&
@@ -2822,18 +2843,22 @@ bool isMatchedGEPOperator(GEPOperator *gepo, struct GlobalVariableInfo *gv_info)
         vector<unsigned> idx_vec = getIndexFromGEPO(gepo);
         if (idx_vec.empty())
         {
+            MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
             MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Unexpected Situation: Error in get Indexs in GEPOperator.\n");
             return false;
         }
-
-        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "idx_vec :\t");
+        
+        // Line 1
+        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Found offsets are: [ ");
         for (unsigned c = 0; c < idx_vec.size(); c++)
-        {
             MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << idx_vec[c] << " ");
-        }
-        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "\nGV NameInfo: \n");
-        MY_DEBUG(_DEBUG_LEVEL, gv_info->printNameInfo(1));
-        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "\n");
+        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "]\n");
+
+        // Line 2
+        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Expected offsets are:  ");
+        MY_DEBUG(_DEBUG_LEVEL, gv_info->printNameInfo(0));
 
         if (idx_vec.size() == gv_info->Offsets.size() + 1)
         {
@@ -2868,6 +2893,7 @@ void handleUser(Value *cur_value,
     if (!cur_value && level>0)
         return;
     else if (!cur_value && level==0){
+
         /*
         * ========== FIELD case ==========
         * Find same type with same offset but not identical gep_inst
@@ -2926,6 +2952,7 @@ void handleUser(Value *cur_value,
         }
         return;
     }
+    // ========== FIELD case DONE ==========
 
     /**
      ** NOTE: If goto a global variable, we treat that gv's influencial zone is included by current gv.
@@ -3097,6 +3124,7 @@ void handleUser(Value *cur_value,
                 gepo_op_index++;
                 if (!isa<Constant>(*it))
                 {
+                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                     MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[WARNING] Unexpected Situation: The " << gepo_op_index << " th Index in GEPOperator is not Constant.\n");
                 }
             }
@@ -3104,13 +3132,19 @@ void handleUser(Value *cur_value,
             /// NOTE: if this is the start point of structural GVs' gep instruction, check and follow.
             if (prev_inst_info == nullptr) // might be the first Instruction to access structural GVs.
             {
-                if (isMatchedGEPOperator(gepo, gv_info))
+                if (isMatchedGEPOperator(gepo, gv_info, level))
                 {
-                    MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Found start point of config: " << gv_info->NameInfo->getNameAsString() << "\n");
+                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Found start point of config: " << gv_info->NameInfo->getNameAsString() << "\n");
                     visitedStructGVCases.push_back(cur_user);
 
                     /// NOTE: We found the gep instruction to get structural configuration option, so we trace it.
                     handleUser(gepo, gv_info, prev_inst_info, level + 1);
+                }
+                else
+                {
+                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "This is not a start point. [OK, PASS]\n");
                 }
             }
             else // prev_inst_info != nullptr
@@ -3133,6 +3167,7 @@ void handleUser(Value *cur_value,
             {
                 string src_type_str = getStructTypeStrFromPrintAPI(bcop->getSrcTy());
                 string dest_type_str = getStructTypeStrFromPrintAPI(bcop->getDestTy());
+                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Src Type: " << src_type_str << "\t Dest Type: " << dest_type_str << "\n");
 
                 if (gv_info->NameInfo->VarType == STRUCT &&
@@ -3143,6 +3178,7 @@ void handleUser(Value *cur_value,
                     {
                         verifiedStructTypeList.push_back(bcop); // record these verified type cast about %struct.redisServer in Redis.
                         unsigned type_offset = std::stoul(dest_type_str.substr(pos + src_type_str.length() + 1, dest_type_str.length()));
+                        MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
                         MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Current Type Offset : " << type_offset << "\n");
                         handleUser(bcop, gv_info, prev_inst_info, level + 1);
                     }
@@ -3230,7 +3266,7 @@ int main(int argc, char **argv)
     // CallGraph * CG = new CallGraph(*M);
     // DLCG = new DLCallGraph(CG);
     clock_t endTime = clock();
-    llvm::outs() << "Parsing DONE. [" << (endTime - startTime) / CLOCKS_PER_SEC << "] secs"
+    llvm::outs() << "Parsing DONE. [" << (endTime - startTime) / CLOCKS_PER_SEC << "] secs\n    This time is mandatary (LLVM library induced), non-optimizable. "
                  << "\n";
     llvm::outs() << "---------------------------------------------------------------------\n";
 
@@ -3367,7 +3403,12 @@ int main(int argc, char **argv)
     // saveData(GEPTypeOffsetInstList);
     // restore();
 
-    llvm::outs() << "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -\n";
+    if(recorded != GEPTypeOffsetInstList.size())
+    {
+        llvm::outs() << "[ERROR] recorded != GEPTypeOffsetInstList.size(). Exit. check at line: " << __LINE__ <<"\n";
+        exit(1);
+    }
+    llvm::outs() << "-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -\n";
     llvm::outs() << "Record " << recorded << " gep_ins,  Ignore " << ignored << " unhandled gep_ins.\n";
     llvm::outs() << "---------------------------------------------------------------------\n";
     // curFref->viewCFG();
@@ -3414,6 +3455,7 @@ int main(int argc, char **argv)
         }
     }
     /// ======= FIELD ========
+    //llvm::outs() << gv_info_list.size() <<" -----------------------------\n\n";
     for(uint config_names_idx=0; config_names_idx<config_names.size(); config_names_idx++){
         if(config_names[config_names_idx]->VarType != FIELD)
             continue;
@@ -3422,6 +3464,7 @@ int main(int argc, char **argv)
         struct GlobalVariableInfo *gv_info = new GlobalVariableInfo(config_names[config_names_idx], nullptr, offsets);
         gv_info_list.push_back(gv_info);
     }
+    /// =====================
 
 
     /// NOTE: Record config variables found in dbg info.
@@ -3472,7 +3515,7 @@ int main(int argc, char **argv)
         struct GlobalVariableInfo *gv_info = gv_info_list[gv_cnt];
         GlobalVariable *gv = gv_info_list[gv_cnt]->Ptr;
 
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n\n\n");
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n\n\n========= Progress: ["<< gv_cnt+1 << "/" << gv_info_list.size() <<"] ========\n\n");
         MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Current Analyzing GV is : ");
         MY_DEBUG(_ERROR_LEVEL, gv_info_list[gv_cnt]->NameInfo->print(0));
 

@@ -91,7 +91,7 @@ unsigned findLastOf(Instruction*, vector<struct LSPair*>);
 string getOriginalName(string);
 string getStructTypeStrFromPrintAPI(Type*);
 vector<unsigned> getIndexFromGEPO(GEPOperator*);
-bool isMatchedGEPOperator(GEPOperator*, struct GlobalVariableInfo*);
+bool isMatchedGEPOperator(GEPOperator*, struct GlobalVariableInfo*, int level);
 void printTabs(unsigned);
 unsigned getFuncArgIndex(CallBase*, Value*);
 void traceFunction(struct FuncInfo*, uint level);
