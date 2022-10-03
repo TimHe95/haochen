@@ -910,6 +910,12 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
 
     vector<User *> UserVec = getSequenceUsers(cur_value);
     unsigned user_ite_cnt = 0;
+    if(UserVec.size() == 0){
+        MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[Ret] Failed to find any user of ");
+        MY_DEBUG(_WARNING_LEVEL, cur_value->print(llvm::outs()));
+        return;
+    }
 
 
     for (auto i = UserVec.rbegin(), e = UserVec.rend(); i != e; i++)
@@ -935,7 +941,8 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
         {
             if (prev_inst_info && cur_inst == prev_inst_info->InstPtr)
             {
-                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "`Previous ins` == `Current ins`. Mostly because tracing user of *addr* of a storeIns: [" << getClassType(cur_inst) << "]\n");
+                MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[Continue to next user] `Previous ins` == `Current ins`. Mostly because tracing user of *addr* of a storeIns: [" << getClassType(cur_inst) << "]\n");
                 continue;
             }
 
@@ -946,6 +953,8 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
             ///       (within same function), we should not record.
             if (prev_inst_info && comesBefore(inst_info->InstPtr, prev_inst_info->InstPtr))
             {
+                MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[Continue to next user] current instruction is before the previous one within same function" << getClassType(cur_inst) << "]\n");
                 continue;
             }
 
@@ -956,7 +965,8 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                 dyn_cast<StoreInst>(prev_inst_info->InstPtr)->getPointerOperand() ==
                     dyn_cast<StoreInst>(inst_info->InstPtr)->getPointerOperand())
             {
-                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Don't trace continuous StoreInst.\n");
+                MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[Continue to next user] Don't trace continuous StoreInst.\n");
                 continue;
             }
 
@@ -965,7 +975,8 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
             {
                 if (std::find(visitedLoadStoreInstList.begin(), visitedLoadStoreInstList.end(), inst_info->InstPtr) != visitedLoadStoreInstList.end())
                 {
-                    MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Don't trace visited Load/Store Inst.\n");
+                    MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[Continue to next user] Don't trace visited Load/Store Inst.\n");
                     continue;
                 }
             }
@@ -1361,7 +1372,9 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                      isa<ExtractElementInst>(cur_inst) ||
                      isa<InsertElementInst>(cur_inst) ||
                      isa<FuncletPadInst>(cur_inst) ||
-                     isa<LandingPadInst>(cur_inst))
+                     isa<LandingPadInst>(cur_inst) ||
+                     isa<BitCastInst>(cur_inst) ||
+                     isa<TruncInst>(cur_inst))
             {
                 MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a " << cur_inst->getOpcodeName() << " Instruction.\n");
@@ -1372,6 +1385,8 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
             else
             {
                 // even don't know what is it, just keep tracing
+                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Unknown type of instruction, but still trace it.\n");
                 traceUser(cur_inst, func_info, inst_info, level);
             }
         }
@@ -1937,7 +1952,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         ///       e.g., fun(x, y, ..) / fun(x, y).  Corner cases.
         if (func_info->Ptr->isVarArg())
         {
-            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "It is a function with variable arguments: " << func_info->FuncName << ".\n");
             return;
         }
@@ -1949,7 +1964,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         /// TODO: Do we need to consider Reference Passing in arguments of functions?
         if (func->getReturnType()->isVoidTy() || func_info->hasInsideDataFlowInfluence == NO)
         {
-            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
             MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Don't need to trace after this function: " << func_info->FuncName << ".\n");
             return;
         }
