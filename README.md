@@ -1,18 +1,6 @@
-# confSysTaint
+# confTainter
 
-`confSysTaint` is the core of `S3M`, `confSysTaint` is based on LLVM IR, it analyzes the control and data dependency between configuration variable and specific syscalls. An example shows how it works:
-
-<img width="412" alt="截屏2022-09-03 12 02 02" src="https://user-images.githubusercontent.com/18543932/188259997-0e1b7269-9e90-41a6-b153-edeeeb4c47ca.png">
-
-## Target syscalls
-
-In section **`4.1 Test Input Generation`**, we mention that `S3M` focuses on four series of syscalls, theay are obtained by our manual investigation on every Linux syscall (335 found in kernel version 5.4.0) by reading the official manual, followed by cross-checking. The filtered out 21 syscalls that may affect I/O size, parallelism, and sequentiality:
-
-| **read series**                                                                                | **write series**                                                                                    | **sync series**                                        | **thread series**              |
-|------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|--------------------------------------------------------|--------------------------------|
-| `read` `pread64` `readv` `preadv` `preadv2` `io_submit` `io_getevents` `madvise` `open` `mmap` | `write` `pwrite64` `writev` `pwritev` `pwritev2` `io_submit` `io_getevents` `madvise` `open` `mmap` | `fsync` `fdatasync` `syncfs` `sync_file_range` `fcntl` | `clone(pthread_create)` `fork` |
-
-## Scenarios that `confSysTaint` supports
+`confSysTaint` is based on LLVM IR, it analyzes the control and data dependency starting from the specified configuration variable(s)
 
 ### Data flow
 
@@ -91,15 +79,6 @@ Tainted Functions (group by Caller-Functions):
     ...
 ```
     
-### 注意事项
-
- - （1）所测配置是否在待分析的IR中。方法是：在源码中搜索配置名称。至少能搜到配置。如果能搜到，也要看搜到的东西是不是c文件或者h文件，不能只是一个template代码或者测试代码匹配到了；**同时**，上网搜索一下配置文档，至少这个配置不是那种需要额外后期手动安装的插件里的配置（例如字眼“These variables are unavailable unless the appropriate server-side plugin is installed”）
-
- - （2）程序中的配置变量名是否正确。有些变量是全局变量，比较好指定，但有些是结构体成员，需要人工判别。比如`STRUCT System_variables.bulk_insert_buff_size`和
-`STRUCT System_variables.histogram_generation_max_mem_size`
-
- - （3）编译**目标待测软件**过程是否有问题：版本llvm10.0.0；选项`-O0`、`-fno-discard-value-names`、`-g`；如果需要分析“phi对数据流的加强”，还需要加上另外[两个选项](https://stackoverflow.com/questions/72123225)
-
 ### Specify the entry configuration variable
  - `SINGLE CONF_VAR_NAME` global variable with basic type (`int`, `bool`, etc.)
  - `STRUCT CONF_VAR_STRUCT.FIELD_NAME` **global** struct with field
@@ -114,7 +93,11 @@ Tainted Functions (group by Caller-Functions):
     ```
 
 ### How to debug:
- 1. If the entry you specified in `*-parameter.txt` does not produce any results, try to find if the configuration variable is rightly in `*.bc`
+ 1. Make sure you have use the right compilation options: `-O0`、`-fno-discard-value-names`、`-g`; if you want the `PhiNode` analysis, also use [these two options](https://stackoverflow.com/questions/72123225).  
+ 2. Make sure the specified configuration variable name is right.
+    - Check if it exists in source code via simple search `grep CONF_NAME /dir/of/src`.  
+    - Check if it has been compiled into the target `.bc` file `grep CONF_VAR_NAME /dir/to/target.ll`.  
+ 3. If the entry you specified in `*-parameter.txt` does not produce any results, try to find if the configuration variable is rightly in `*.bc`
     ```
     ########
     ## Example empty result: content of "*-record.dat"
@@ -133,6 +116,14 @@ Tainted Functions (group by Caller-Functions):
 
     Related GlobalVariables: 
     ```
-    - For example, if you use `FIELD System_variables.45` to specify configuration `System_variables.preload_buff_size`, then you need to make sure command `grep "getelementptr inbounds %struct.System_variables" mysqld.ll` produce the right results like `%xx = getelementptr inbounds %struct.System_variables, %struct.System_variables* %xx, i64 0, i32 45, !dbg !xxx` where `i64 0, i32 45` must appear.  
-    - If you use `SINGLE srv_unix_file_flush_method` to specify configuration `innodb_flush_method`, things will be easier: use `grep "srv_unix_file_flush_method" mysqld.ll` to see if something like `%xx = load i32, i32* @srv_unix_file_flush_method, align 4, !dbg xxxx` appears.  
+    - For example, if you use `FIELD System_variables.45` to specify configuration `System_variables.preload_buff_size`, then you need to make sure command  
+       ```
+       grep "getelementptr inbounds %struct.System_variables" mysqld.ll
+       ```
+       produces the right results like `%xx = getelementptr inbounds %struct.System_variables, %struct.System_variables* %xx, i64 0, i32 45, !dbg !xxx` where `i64 0, i32 45` must appear.   
+    - If you use `SINGLE srv_unix_file_flush_method` to specify configuration `innodb_flush_method`, things will be easier: use  
+       ```
+       grep "srv_unix_file_flush_method" mysqld.ll
+       ```
+       to see if something like `%xx = load i32, i32* @srv_unix_file_flush_method, align 4, !dbg xxxx` appears.   
     - If all the `stdout` log shows that all the `DIRECT use` of `STRUCT xxx.yyy` is `[OK, PASS]`, it may be because `xxx` is not global, or some other reasons. Try to use `FIELD xxx.0` (say `yyy` is the very first field of `xxx`)  
