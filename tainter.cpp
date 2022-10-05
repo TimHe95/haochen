@@ -954,7 +954,9 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
             if (prev_inst_info && comesBefore(inst_info->InstPtr, prev_inst_info->InstPtr))
             {
                 MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[Continue to next user] current instruction is before the previous one within same function" << getClassType(cur_inst) << "]\n");
+                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[Continue to next user] current instruction is before the previous one within same function:" << getClassType(cur_inst) << "]\n");
+                MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_WARNING_LEVEL, cur_inst->print(llvm::outs()));
                 continue;
             }
 
@@ -1024,8 +1026,8 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                  */
                 string func_name = getOriginalName(func->getName());
                 unsigned arg_index = getFuncArgIndex(call, cur_value);
-                MY_DEBUG(_REDUNDENCY_LEVEL, llvm::outs() << "Function Name : " << func_name << "\n");
-                MY_DEBUG(_REDUNDENCY_LEVEL, llvm::outs() << "Output: current Arg Index is : " << arg_index << "\n");
+                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Function Name : " << func_name << "\n");
+                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Output: current Arg Index is : " << arg_index << "\n");
                 struct FuncInfo *new_func_info = new FuncInfo(func, func_name, arg_index, inst_info->InstLoc.toString());
                 unsigned index = isFuncInfoRecorded(new_func_info, func_info->InsideFuncInfoList);
                 if (index == ERR_OORANGE)
@@ -1040,12 +1042,17 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
 
                 /// IGNORE: lib function.
                 if (std::find(CommonLibFunctions.begin(), CommonLibFunctions.end(), func_name) != CommonLibFunctions.end())
+                {
+                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[PASS] Calling to lib-function, check tainter.cpp `CommonLibFunctions`:" << func_name << "\n");
                     continue;
+                }
 
                 /// IGNORE: If this Function has variable arguments' number, maybe we don't need to follow.
                 if (func_info->Ptr->isVarArg())
                 {
-                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "ERROR (but strange): Current call Arg Index is larger than Function Arguments: " << func_name << "\n");
+                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[ERROR, PASS] (but strange): Current call Arg Index is larger than Function Arguments: " << func_name << "\n");
                     continue;
                 }
 
@@ -1055,8 +1062,11 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
 
                 // So if there is no `hasInsideDataFlowInfluence` or no ret val, do not trace return value
                 if (new_func_info->Ptr->getReturnType()->isVoidTy() || new_func_info->hasInsideDataFlowInfluence == NO)
+                {
+                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[PASS] return is Void, OR, no data flow to the return value.");
                     continue;
-                else
+                }else
                     traceUser(call, new_func_info, inst_info, level);
             }
             else if (StoreInst *store = dyn_cast<StoreInst>(cur_inst))
@@ -1269,16 +1279,17 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                 else
                 { // May be the class of 'store_addr' is 'User::DerivedUser'. Don't care
                     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Pointer analysis: this StoreInst stores to a address allocated by alloca (User::DerivedUser), so no need pointer analysis futher.\n");
+                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Pointer analysis: this StoreInst stores to a address allocated by ["<< getClassType(store_addr) <<"], Currently, no need pointer analysis futher.\n");
                 }
 
                 /// TODO: fix bug here.
-                traceUser(store_addr, func_info, inst_info, level + 1);
+                // Delete at 2022 10 05. Forgot why I had written this line.
+                //traceUser(store_addr, func_info, inst_info, level + 1);
 
                 ///////////////////////////////
                 //Value *store_addr = store->getPointerOperand(); // e.g.  "store i32 %1, i32* @somevariable"
                 //traceUser(store_addr, func_info, inst_info, level);    //                "@somevariable" should be traced
-            /////////////////////////////////////////////////////////////////////////////////////
+                /////////////////////////////////////////////////////////////////////////////////////
             }
             else if (isa<FenceInst>(cur_inst) ||
                      isa<AtomicCmpXchgInst>(cur_inst) ||
@@ -1450,7 +1461,7 @@ bool iterateAndCheck(struct InstInfo *inst_info)
 void traceFunction(struct FuncInfo *func_info, uint level)
 {
     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[-- " << __func__ << " --]\n");
+    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[## " << __func__ << " ##]\n");
     // I do not think this is possible ?
     //     func_info->Ptr  ~~ Function *
     //     arg_size()  -- number of arguments
@@ -2207,7 +2218,8 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         }
 
         /// TODO: fix bug here.
-        handleUser(store_addr, gv_info, cur_inst_info, level + 1);
+        // Deleted 2022 10 05 forgot why I had written this line
+        // handleUser(store_addr, gv_info, cur_inst_info, level + 1);
     }
     else if (GetElementPtrInst *gep = dyn_cast<GetElementPtrInst>(cur_inst))
     {
