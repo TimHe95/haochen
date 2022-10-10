@@ -1284,7 +1284,8 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
 
                 /// TODO: fix bug here.
                 // Delete at 2022 10 05. Forgot why I had written this line.
-                //traceUser(store_addr, func_info, inst_info, level + 1);
+                // Undelete at 2022 10 10. Revert.
+                traceUser(store_addr, func_info, inst_info, level + 1);
 
                 ///////////////////////////////
                 //Value *store_addr = store->getPointerOperand(); // e.g.  "store i32 %1, i32* @somevariable"
@@ -2219,7 +2220,8 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
 
         /// TODO: fix bug here.
         // Deleted 2022 10 05 forgot why I had written this line
-        // handleUser(store_addr, gv_info, cur_inst_info, level + 1);
+        // Undelete at 2022 10 10. Revert.
+        handleUser(store_addr, gv_info, cur_inst_info, level + 1);
     }
     else if (GetElementPtrInst *gep = dyn_cast<GetElementPtrInst>(cur_inst))
     {
