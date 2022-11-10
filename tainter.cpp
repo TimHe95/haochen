@@ -932,6 +932,9 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
         {
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    所属函数: " << getOriginalName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    对应源码位置：");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
         }
@@ -1702,7 +1705,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
         if (store_ins_set.empty() && call_ins_set.empty())
         {
 
-            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "No storeInst or callBase in this basicBlock. Control flow in this basic block stop here.\n");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << ", 该基本块中无后续污点传播，停止。\n");
             continue;
@@ -1721,7 +1724,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
 #else
             MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
             MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "STOP here: Def `CONTROL_STORE` in tainter.cpp to enable storeInst.\n");
-            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "No storeInst or callBase in this basicBlock. Control flow in this basic block stop here.\n");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << ", 该基本块中无后续污点传播，停止。\n");
 
@@ -1741,6 +1744,9 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应第"<< kk++ <<"条IR指令: ");
                 MY_DEBUG(_ERROR_LEVEL, (*i)->print(llvm::outs()));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  所属函数: " << getOriginalName(dyn_cast<Instruction>(*i)->getFunction()->getName()));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应源码位置: ");
@@ -1782,6 +1788,9 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应第"<< kk++ <<"条IR指令: ");
                 MY_DEBUG(_ERROR_LEVEL, (*i)->print(llvm::outs()));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  所属函数: " << getOriginalName(dyn_cast<Instruction>(*i)->getFunction()->getName()));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应源码位置: ");
@@ -3059,6 +3068,9 @@ void handleUser(Value *cur_value,
         MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
         if (isa<Instruction>(cur_user))
         {
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    所属函数: " << getOriginalName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    对应源码位置: ");
