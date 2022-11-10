@@ -8,7 +8,8 @@
                 2   :   debug   :   _DEBUG_LEVEL
                 3   :   redundency: _REDUNDENCY_LEVEL
 */
-unsigned debug_level = _DEBUG_LEVEL;
+//unsigned debug_level = _DEBUG_LEVEL;
+unsigned debug_level = _ERROR_LEVEL;
 
 Module *M = nullptr;
 struct DLCallGraph *DLCG;
@@ -922,19 +923,20 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
     {
         User *cur_user = *i;
 
-        MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Current User: level " << level << "\n");
-        MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "  ↳");
-        MY_DEBUG(_WARNING_LEVEL, cur_user->print(llvm::outs()));
+        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "污点传播层数: " << level << "\n");
+        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  ↳ 对应IR指令: ");
+        MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
         if (isa<Instruction>(cur_user))
         {
-            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\t");
-            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    对应源码位置：");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
         }
         else
         {
-            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
         }
 
         if (Instruction *cur_inst = dyn_cast<Instruction>(cur_user))
@@ -1026,8 +1028,8 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                  */
                 string func_name = getOriginalName(func->getName());
                 unsigned arg_index = getFuncArgIndex(call, cur_value);
-                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Function Name : " << func_name << "\n");
-                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Output: current Arg Index is : " << arg_index << "\n");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "函数名: " << func_name << "\n");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "污点从第" << arg_index << "个参数传入\n");
                 struct FuncInfo *new_func_info = new FuncInfo(func, func_name, arg_index, inst_info->InstLoc.toString());
                 unsigned index = isFuncInfoRecorded(new_func_info, func_info->InsideFuncInfoList);
                 if (index == ERR_OORANGE)
@@ -1043,16 +1045,16 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                 /// IGNORE: lib function.
                 if (std::find(CommonLibFunctions.begin(), CommonLibFunctions.end(), func_name) != CommonLibFunctions.end())
                 {
-                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[PASS] Calling to lib-function, check tainter.cpp `CommonLibFunctions`:" << func_name << "\n");
+                    MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[PASS] Calling to lib-function, check tainter.cpp `CommonLibFunctions`:" << func_name << "\n");
                     continue;
                 }
 
                 /// IGNORE: If this Function has variable arguments' number, maybe we don't need to follow.
                 if (func_info->Ptr->isVarArg())
                 {
-                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[ERROR, PASS] (but strange): Current call Arg Index is larger than Function Arguments: " << func_name << "\n");
+                    MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[ERROR, PASS] (but strange): Current call Arg Index is larger than Function Arguments: " << func_name << "\n");
                     continue;
                 }
 
@@ -1063,8 +1065,8 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                 // So if there is no `hasInsideDataFlowInfluence` or no ret val, do not trace return value
                 if (new_func_info->Ptr->getReturnType()->isVoidTy() || new_func_info->hasInsideDataFlowInfluence == NO)
                 {
-                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[PASS] return is Void, OR, no data flow to the return value.");
+                    MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[PASS] return is Void, OR, no data flow to the return value.");
                     continue;
                 }else
                     traceUser(call, new_func_info, inst_info, level);
@@ -1406,9 +1408,9 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
         else if (GEPOperator *gepo = dyn_cast<GEPOperator>(cur_user))
         {
 
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Here!!! GEPOperator in traceUser() !!! Should not happened!!\n");
-            MY_DEBUG(_ERROR_LEVEL, gepo->print(llvm::outs()));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Here!!! GEPOperator in traceUser() !!! Should not happened!!\n");
+            MY_DEBUG(_WARNING_LEVEL, gepo->print(llvm::outs()));
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\n");
 
             /// whatever getNumOperands() = 3 or 2, we only trace the base situations.
             /// WHY??????????
@@ -1420,26 +1422,27 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
 
         else if (ConstantExpr *constant_expr = dyn_cast<ConstantExpr>(cur_value))
         {
-            llvm::outs() << "[WARNING] Unhandled User Situation in traceUser: user is a ConstantExpr\n";
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[WARNING] Unhandled User Situation in traceUser: user is a ConstantExpr\n");
             continue;
         }
 
         else if (ConstantAggregate *constant_struct = dyn_cast<ConstantAggregate>(cur_value))
         {
-            llvm::outs() << "[WARNING] Unhandled User Situation in traceUser: user is a ConstantAggregate\n";
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[WARNING] Unhandled User Situation in traceUser: user is a ConstantAggregate\n");
             continue;
         }
 
         else
         {
+            string class_type;
             MY_DEBUG(_DEBUG_LEVEL,
-                     llvm::outs() << "[WARNING] Unhandled User Situation in traceUser:\n";
-                     cur_user->print(llvm::outs());
-                     llvm::outs() << "\n";
-                     cur_user->getType()->print(llvm::outs());
-                     llvm::outs() << "\n";
-                     string class_type = getClassType(cur_user);
-                     llvm::outs() << "This is a " << class_type << " Class\n\n";)
+                     MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[WARNING] Unhandled User Situation in traceUser:\n");
+                     MY_DEBUG(_WARNING_LEVEL, cur_user->print(llvm::outs()));
+                     MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\nIR指令: ");
+                     MY_DEBUG(_WARNING_LEVEL, cur_user->getType()->print(llvm::outs()));
+                     MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\n");
+                     MY_DEBUG(_WARNING_LEVEL, class_type = getClassType(cur_user));
+                     MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "This is a " << class_type << " Class\n\n";))
         }
     }
 }
@@ -1622,12 +1625,13 @@ void handlePHINodesFromBBs(vector<BasicBlock *> &BBsPhi, // candidate BB where w
                     struct InstInfo *the_phi_ins = MkNewInstInfoAndLinkOntoPrevInstInfo(phi_inst, cur_inst_info, false);
                     
                     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "A PHI-Node is tainted:\n");
-                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_DEBUG_LEVEL, phi_inst->print(llvm::outs()));
-                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "\n");
-                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << the_phi_ins->InstLoc.toString() << "\n");
+                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "【弱数据流】(由Phi指令传递):\n");
+                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
+                    MY_DEBUG(_ERROR_LEVEL, phi_inst->print(llvm::outs()));
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应源码位置: " << the_phi_ins->InstLoc.toString() << "\n");
 
                     handleUser(phi_inst, gv_info, the_phi_ins, level+1);
                     /*
@@ -1656,11 +1660,11 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
     // store ins and call ins only (for now)
     for (vector<BasicBlock *>::iterator iB = BBs.begin(); iB != BBs.end(); iB++)
     {
-
+        srand((unsigned)time(NULL) * getpid());     
         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
         MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "+-----------------------------\n");
-        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "|  BasicBlock \"" << (*iB)->getName() << "\"\n");
+        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流: 影响基本块\"" << (*iB)->getName() << gen_random(4) << "\", 基本块内部控制流分析...\n");
         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
         MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "+-----------------------------\n");
 
@@ -1697,8 +1701,9 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
         if (store_ins_set.empty() && call_ins_set.empty())
         {
 
-            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "No storeInst or callBase in this basicBlock. Control flow in this basic block stop here.\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "No storeInst or callBase in this basicBlock. Control flow in this basic block stop here.\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "该基本块中无后续污点传播，停止。\n");
             continue;
         }
         else if (!store_ins_set.empty() && call_ins_set.empty())
@@ -1714,18 +1719,22 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
             }
 #else
             MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Def `CONTROL_STORE` to enable storeInst.\n");
+            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "STOP here: Def `CONTROL_STORE` in tainter.cpp to enable storeInst.\n");
 #endif
         }
         else if (store_ins_set.empty() && !call_ins_set.empty())
         {
 
-            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Only callBase (no storeInst) in this basicBlock. We take all calls as the influenced functions finally. And control flow in this basic block stop here.\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流: \n");
+            //MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Only callBase (no storeInst) in this basicBlock. We take all calls as the influenced functions finally. And control flow in this basic block stop here.\n");
             for (vector<CallBase *>::iterator i = call_ins_set.begin(); i != call_ins_set.end(); i++)
             {
                 cur_inst_info->addControllingFuncs((*i)->getCalledFunction());
                 gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
+                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
+                MY_DEBUG(_ERROR_LEVEL, (*i)->getCalledFunction()->print(llvm::outs()));
                 /*
                 if(gv_info->InfluencedFuncList.find(gv_info->currentGVStartingFuncName) != gv_info->InfluencedFuncList.end())
                     gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
@@ -1752,10 +1761,16 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
             MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
             MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Def `CONTROL_STORE` to enable storeInst.\n");
 #endif
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流: \n");
             for (vector<CallBase *>::iterator i = call_ins_set.begin(); i != call_ins_set.end(); i++)
             {
                 cur_inst_info->addControllingFuncs((*i)->getCalledFunction());
                 gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
+                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
+                MY_DEBUG(_ERROR_LEVEL, (*i)->getCalledFunction()->print(llvm::outs()));
+
                 /*
                 if(gv_info->InfluencedFuncList.find(gv_info->currentGVStartingFuncName) != gv_info->InfluencedFuncList.end())
                     gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
@@ -1919,10 +1934,10 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
          **/
         string func_name = getOriginalName(func->getName());
         unsigned arg_index = getFuncArgIndex(call, cur_value);
-        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Function Name : " << func_name << "\n");
-        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Output: current Arg Index is : " << arg_index << "\n");
+        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "函数名: " << func_name << "\n");
+        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "污点从第" << arg_index << "个参数传入\n");
 
         /// Record current call information.
         struct FuncInfo *func_info = new FuncInfo(func, func_name, arg_index, cur_inst_info->InstLoc.toString());
@@ -1945,7 +1960,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         /// IGNORE: logging library functions.
         if (std::find(CommonLibFunctions.begin(), CommonLibFunctions.end(), func_info->FuncName) != CommonLibFunctions.end())
         {
-            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
             MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "It is a log function, stop. " << func_info->FuncName << ".\n");
             return;
         }
@@ -1954,7 +1969,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         /*
         if (std::find(CommonLibFunctions.begin(), CommonLibFunctions.end(), func_info->FuncName) != CommonLibFunctions.end())
         {
-            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
             MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "It is a lib function, need rule. " << func_info->FuncName << ".\n");
             return;
         }
@@ -1964,8 +1979,8 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         ///       e.g., fun(x, y, ..) / fun(x, y).  Corner cases.
         if (func_info->Ptr->isVarArg())
         {
-            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "It is a function with variable arguments: " << func_info->FuncName << ".\n");
+            MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "It is a function with variable arguments: " << func_info->FuncName << ".\n");
             return;
         }
 
@@ -2200,8 +2215,10 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
                                     cur_inst_info->Successors.push_back(inst_info_caller);
                                     inst_info_caller->Predecessor = cur_inst_info;
                                     Value *tainted_tobe_followed = caller_inst->getArgOperand(arg_index);
-                                    tainted_tobe_followed->print(llvm::outs());
-                                    llvm::outs() << "\n";
+                                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
+                                    MY_DEBUG(_ERROR_LEVEL, tainted_tobe_followed->print(llvm::outs()));
+                                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
 
                                     handleUser(tainted_tobe_followed, gv_info, inst_info_caller, level + 1);
                                 }
@@ -2241,7 +2258,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         {
             if (isMatchedGEPOperator(dyn_cast<GEPOperator>(gep), gv_info, level))
             {
-                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Found start point of config: " << gv_info->NameInfo->getNameAsString() << "\n");
+                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "找到配置项 " << gv_info->NameInfo->getNameAsString() << " 污点入口: \n");
                 visitedStructGVCases.push_back(cur_inst);
 
                 /// NOTE: We found the gep instruction to get structural configuration option, so we trace it.
@@ -2322,8 +2339,8 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             BasicBlock *rightBB = branch->getSuccessor(1);
             if (leftBB && rightBB && rightBB->getParent() != leftBB->getParent())
             {
-                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[ERROR] parent of the two children are not expected, RETERN.\n");
+                MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[ERROR] parent of the two children are not expected, RETERN.\n");
                 return;
             }
 
@@ -2334,8 +2351,8 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
 #ifdef OLD_JUDGE_TAINT
             expandToAllReachableBB(childrens);
 #endif
-            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "exp.-to-all children size: " << childrens.size() << "\n");
+            MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "exp.-to-all children size: " << childrens.size() << "\n");
 
             // HERE, must saitisfy: "leftBB->getParent() == rightBB->getParent()"
             //   the PostDominatorTree is for block-level control dependency
@@ -2387,8 +2404,8 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
 
             if (taintedBB.empty())
             {
-                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[ERROR] VERY Strange case. None-post-dominant-branches should NOT be empty.\n");
+                MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[ERROR] VERY Strange case. None-post-dominant-branches should NOT be empty.\n");
                 return;
                 /*
                 /// TAG: If condition in for-loop in planner.c:5687:9, how to judge its influential area?
@@ -2434,22 +2451,22 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
                 */
             }
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "tainted basic-blocks: " << taintedBB.size() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流影响 " << taintedBB.size() << " 个基本块\n");
 
             vector<BasicBlock*> PHIedBB;
             calcPHIedBB(leftBB, rightBB, PHIedBB);
             if(PHIedBB.empty()){
-                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[NOTE] no PHIed nodes here, i.e., no auxillary data flow.\n");
+                MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[NOTE] no PHIed nodes here, i.e., no auxillary data flow.\n");
             }
-            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
 #ifdef PHIBB_UNION
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Union ");
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Union ");
 #endif
 #ifdef PHIBB_INTERSECT
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Intersect ");
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Intersect ");
 #endif
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "PHI-ed basic-blocks: " << PHIedBB.size() << "\n");
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "PHI-ed basic-blocks: " << PHIedBB.size() << "\n");
 
             /// currently, we follow phi cases infinitely;  
             /// TODO: add max limitation on the flow length.
@@ -2471,15 +2488,15 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
                                     level + 1);
 
 
-            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "This Instruction marked as a ControllingInst 2.\n");
+            MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "This Instruction marked as a ControllingInst 2.\n");
             cur_inst_info->isControllingInst = true;
             cur_inst_info->setControllingBBs(taintedBB);
         }
         else
         {
-            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "WTF is this?? check me in line " << __LINE__ << ".\n");
+            MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "WTF is this?? check me in line " << __LINE__ << ".\n");
         }
     }
     else if (SwitchInst *switch_inst = dyn_cast<SwitchInst>(cur_inst))
@@ -2496,12 +2513,12 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         calcTaintBBfromBr(&children, &children, &taintedBBs, PDT);
         if (taintedBBs.empty())
         {
-            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[ERROR] VERY Strange case. should be at least one element.\n");
+            MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[ERROR] VERY Strange case. should be at least one element.\n");
             return;
         }
         MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "tainted basic-blocks: " << taintedBBs.size() << "\n");
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流影响 " << taintedBBs.size() << " 个基本块\n");
 
         // handle those BBs.
         handleControFlowFromBBs(taintedBBs, gv_info, cur_inst_info, level+1);
@@ -2773,21 +2790,21 @@ std::vector<User *> getSequenceUsers(Value *cur_value)
 
 vector<Use *> getSequenceUses_OnlyGEPins(Value *cur_value)
 {
-    llvm::outs() << "[Uses of] ";
-    cur_value->print(llvm::outs());
-    llvm::outs() << "are: \n";
+    MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[Uses of] ");
+    MY_DEBUG(_WARNING_LEVEL, cur_value->print(llvm::outs()));
+    MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "are: \n");
     vector<Use *> UseVec;
     UseVec.clear();
     for (Value::use_iterator i = cur_value->use_begin(), e = cur_value->use_end(); i != e; i++)
     {
         if (GetElementPtrInst *gep_ins = dyn_cast<GetElementPtrInst>(*i))
         {
-            MY_DEBUG(_DEBUG_LEVEL, gep_ins->print(llvm::outs()));
-            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "\n");
+            MY_DEBUG(_WARNING_LEVEL, gep_ins->print(llvm::outs()));
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\n");
         }
         else
         {
-            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "NOT gep_ins, but " << getClassType(*i) << "\n");
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "NOT gep_ins, but " << getClassType(*i) << "\n");
         }
     }
     return UseVec;
@@ -2795,13 +2812,13 @@ vector<Use *> getSequenceUses_OnlyGEPins(Value *cur_value)
 
 void printSequenceUsers(Value *cur_value)
 {
-    llvm::outs() << "[Users of] ";
-    cur_value->print(llvm::outs());
-    llvm::outs() << "are: \n";
+    MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[Users of] ");
+    MY_DEBUG(_WARNING_LEVEL, cur_value->print(llvm::outs()));
+    MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "are: \n");
     for (Value::user_iterator i = cur_value->user_begin(), e = cur_value->user_end(); i != e; i++)
     {
         User *cur_user = *i;
-        i->print(llvm::outs());
+        MY_DEBUG(_WARNING_LEVEL, i->print(llvm::outs()));
         llvm::outs() << "\n";
     }
     return;
@@ -2837,7 +2854,7 @@ bool findVisitedInstruction(struct InstInfo *inst_info, struct InstInfo *prev_in
     /// ByHHC: I change it to false.
     if (!inst_info || !prev_inst_info)
     {
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "inst_info is nullptr. Check me at line: " << __LINE__ << "\n");
+        MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "inst_info is nullptr. Check me at line: " << __LINE__ << "\n");
         return false;
     }
 
@@ -2850,9 +2867,9 @@ bool findVisitedInstruction(struct InstInfo *inst_info, struct InstInfo *prev_in
     {
         if (inst_info->InstPtr == temp->InstPtr)
         {
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Find in reverse the previous Inst node " << cnt << "\n");
-            MY_DEBUG(_ERROR_LEVEL, temp->InstPtr->print(llvm::outs()));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Find in reverse the previous Inst node " << cnt << "\n");
+            MY_DEBUG(_WARNING_LEVEL, temp->InstPtr->print(llvm::outs()));
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\n");
             return true;
         }
         temp = temp->Predecessor;
@@ -2930,8 +2947,8 @@ void handleUser(Value *cur_value,
         *
         *    1. iterate over all get_inst. find the matched one.
         */
-        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Entry point of non-global pointer parameter.\n");
+        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "污点入口(非全局变量)\n");
         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
         MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] Finding GetElementPtrInst with same type, same offset, but not identical one.\n");
         Value *matched_ins = nullptr;
@@ -2989,7 +3006,7 @@ void handleUser(Value *cur_value,
      **/
     if (gv_info->Ptr && cur_value != gv_info->Ptr && isa<GlobalVariable>(cur_value))
     {
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Come to Global Variable: " << cur_value->getName() << ", stop\n");
+        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Come to Global Variable: " << cur_value->getName() << ", stop\n");
         gv_info->InfluencedGVList.push_back(dyn_cast<GlobalVariable>(cur_value));
         //return;
     }
@@ -3019,19 +3036,21 @@ void handleUser(Value *cur_value,
             MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
             MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\nThe " << user_ite_cnt << " th New Direct User tracing:\n");
         }
-        MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Current User: level " << level << "\n");
-        MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "  ↳");
-        MY_DEBUG(_WARNING_LEVEL, cur_user->print(llvm::outs()));
+        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "污点传播层数: " << level << "\n");
+        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  ↳ 对应IR指令: ");
+        MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
         if (isa<Instruction>(cur_user))
         {
-            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\t");
-            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    对应源码位置: ");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
         }
         else
         {
-            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    对应源码位置: ");
         }
 
         if (Instruction *cur_inst = dyn_cast<Instruction>(cur_user))
@@ -3153,8 +3172,8 @@ void handleUser(Value *cur_value,
                 gepo_op_index++;
                 if (!isa<Constant>(*it))
                 {
-                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[WARNING] Unexpected Situation: The " << gepo_op_index << " th Index in GEPOperator is not Constant.\n");
+                    MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[WARNING] Unexpected Situation: The " << gepo_op_index << " th Index in GEPOperator is not Constant.\n");
                 }
             }
 
@@ -3164,7 +3183,7 @@ void handleUser(Value *cur_value,
                 if (isMatchedGEPOperator(gepo, gv_info, level))
                 {
                     MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Found start point of config: " << gv_info->NameInfo->getNameAsString() << "\n");
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "找到配置项 " << gv_info->NameInfo->getNameAsString() << " 污点入口\n");
                     visitedStructGVCases.push_back(cur_user);
 
                     /// NOTE: We found the gep instruction to get structural configuration option, so we trace it.
@@ -3172,13 +3191,13 @@ void handleUser(Value *cur_value,
                 }
                 else
                 {
-                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "This is not a start point. [OK, PASS]\n");
+                    MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "This is not a start point. [OK, PASS]\n");
                 }
             }
             else // prev_inst_info != nullptr
             {
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[ERROR] Meet GEPOperator while prev_inst_info != nullptr\n");
+                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[ERROR] Meet GEPOperator while prev_inst_info != nullptr\n");
 
                 if (gepo->getPointerOperand() == cur_value)
                 {
@@ -3189,15 +3208,15 @@ void handleUser(Value *cur_value,
 
         else if (BitCastOperator *bcop = dyn_cast<BitCastOperator>(cur_user))
         {
-            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "It is a BitCastOperator.\n");
+            MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "It is a BitCastOperator.\n");
 
             if (prev_inst_info == nullptr)
             {
                 string src_type_str = getStructTypeStrFromPrintAPI(bcop->getSrcTy());
                 string dest_type_str = getStructTypeStrFromPrintAPI(bcop->getDestTy());
-                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Src Type: " << src_type_str << "\t Dest Type: " << dest_type_str << "\n");
+                MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Src Type: " << src_type_str << "\t Dest Type: " << dest_type_str << "\n");
 
                 if (gv_info->NameInfo->VarType == STRUCT &&
                     gv_info->GlobalVariableType == src_type_str)
@@ -3215,7 +3234,7 @@ void handleUser(Value *cur_value,
             }
             else // prev_inst_info != nullptr
             {
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[ERROR] Meet BitCastOperator while prev_inst_info != nullptr\n");
+                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[ERROR] Meet BitCastOperator while prev_inst_info != nullptr\n");
             }
         }
 

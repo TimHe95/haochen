@@ -41,6 +41,7 @@
 // #include <stdlib.h>
 #include <cxxabi.h>
 #include <typeinfo> //for 'typeid' to work  
+#include <unistd.h>
 
 
 
@@ -69,6 +70,22 @@ Vector2 operator+(Vector2 a, Vector2 const& b) {
   return a;
 }
 */
+
+std::string gen_random(const int len) {
+    static const char alphanum[] =
+        "0123456789"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz";
+    std::string tmp_s;
+    tmp_s.reserve(len);
+
+    for (int i = 0; i < len; ++i) {
+        tmp_s += alphanum[rand() % (sizeof(alphanum) - 1)];
+    }
+    
+    return tmp_s;
+}
+
 
 
 bool readConfigVariableNames( std::string, std::vector< struct ConfigVariableNameInfo* >&);
