@@ -924,12 +924,13 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
         User *cur_user = *i;
 
         MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "污点传播层数: " << level << "\n");
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "数据流污点传播层数: " << level << "\n");
         MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
         MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  ↳ 对应IR指令: ");
         MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
         if (isa<Instruction>(cur_user))
         {
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    对应源码位置：");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
@@ -1664,7 +1665,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
         MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "+-----------------------------\n");
         MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流: 影响基本块\"" << (*iB)->getName() << gen_random(4) << "\", 基本块内部控制流分析...\n");
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流: 影响基本块\"" << (*iB)->getName() << gen_random(4) << "\"");
         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
         MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "+-----------------------------\n");
 
@@ -1703,7 +1704,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
 
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "No storeInst or callBase in this basicBlock. Control flow in this basic block stop here.\n");
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "该基本块中无后续污点传播，停止。\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << ", 该基本块中无后续污点传播，停止。\n");
             continue;
         }
         else if (!store_ins_set.empty() && call_ins_set.empty())
@@ -1720,21 +1721,31 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
 #else
             MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
             MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "STOP here: Def `CONTROL_STORE` in tainter.cpp to enable storeInst.\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "No storeInst or callBase in this basicBlock. Control flow in this basic block stop here.\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << ", 该基本块中无后续污点传播，停止。\n");
+
 #endif
         }
         else if (store_ins_set.empty() && !call_ins_set.empty())
         {
 
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流: \n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            int kk = 1;
             //MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Only callBase (no storeInst) in this basicBlock. We take all calls as the influenced functions finally. And control flow in this basic block stop here.\n");
             for (vector<CallBase *>::iterator i = call_ins_set.begin(); i != call_ins_set.end(); i++)
             {
                 cur_inst_info->addControllingFuncs((*i)->getCalledFunction());
                 gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
-                MY_DEBUG(_ERROR_LEVEL, (*i)->getCalledFunction()->print(llvm::outs()));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应第"<< kk++ <<"条IR指令: ");
+                MY_DEBUG(_ERROR_LEVEL, (*i)->print(llvm::outs()));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应源码位置: ");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(*i)).toString() << "\n");
+
                 /*
                 if(gv_info->InfluencedFuncList.find(gv_info->currentGVStartingFuncName) != gv_info->InfluencedFuncList.end())
                     gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
@@ -1762,14 +1773,19 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
             MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Def `CONTROL_STORE` to enable storeInst.\n");
 #endif
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流: \n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            int kk = 1;
             for (vector<CallBase *>::iterator i = call_ins_set.begin(); i != call_ins_set.end(); i++)
             {
                 cur_inst_info->addControllingFuncs((*i)->getCalledFunction());
                 gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
-                MY_DEBUG(_ERROR_LEVEL, (*i)->getCalledFunction()->print(llvm::outs()));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应第"<< kk++ <<"条IR指令: ");
+                MY_DEBUG(_ERROR_LEVEL, (*i)->print(llvm::outs()));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应源码位置: ");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(*i)).toString() << "\n");
 
                 /*
                 if(gv_info->InfluencedFuncList.find(gv_info->currentGVStartingFuncName) != gv_info->InfluencedFuncList.end())
@@ -3037,18 +3053,20 @@ void handleUser(Value *cur_value,
             MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\nThe " << user_ite_cnt << " th New Direct User tracing:\n");
         }
         MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "污点传播层数: " << level << "\n");
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "数据流污点传播层数: " << level << "\n");
         MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
         MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  ↳ 对应IR指令: ");
         MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
         if (isa<Instruction>(cur_user))
         {
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    对应源码位置: ");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
         }
         else
         {
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    对应源码位置: ");
         }
@@ -3563,8 +3581,8 @@ int main(int argc, char **argv)
         struct GlobalVariableInfo *gv_info = gv_info_list[gv_cnt];
         GlobalVariable *gv = gv_info_list[gv_cnt]->Ptr;
 
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n\n\n========= Progress: ["<< gv_cnt+1 << "/" << gv_info_list.size() <<"] ========\n\n");
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "Current Analyzing GV is : ");
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n\n\n========= 进度: ["<< gv_cnt+1 << "/" << gv_info_list.size() <<"] ========\n\n");
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "当前正在分析: ");
         MY_DEBUG(_ERROR_LEVEL, gv_info_list[gv_cnt]->NameInfo->print(0));
 
         /*============================================
