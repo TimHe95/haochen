@@ -923,13 +923,25 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
     {
         User *cur_user = *i;
 
-        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "数据流污点传播层数: " << level << "\n");
-        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  ↳ 对应IR指令: ");
-        MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
+        MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "数据流污点传播层数: " << level << "\n");
+        //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+        //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应IR指令: ");
+        //MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
         if (isa<Instruction>(cur_user))
         {
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应源码位置: ");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << getOriginalName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
+            MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            /*
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    所属函数: " << getOriginalName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
@@ -937,9 +949,19 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    对应源码位置：");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
+            */
         }
         else
         {
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应源码位置: ");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: ");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
+            MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
         }
 
@@ -1628,14 +1650,17 @@ void handlePHINodesFromBBs(vector<BasicBlock *> &BBsPhi, // candidate BB where w
 
                     struct InstInfo *the_phi_ins = MkNewInstInfoAndLinkOntoPrevInstInfo(phi_inst, cur_inst_info, false);
                     
-                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "【弱数据流】(由Phi指令传递):\n");
+                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[弱数据流](由Phi指令传递)\n");
+                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应源码位置: " << the_phi_ins->InstLoc.toString() << "\n");
+                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << getOriginalName(the_phi_ins->InstPtr->getFunction()->getName()) << "\n");
                     MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
                     MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
                     MY_DEBUG(_ERROR_LEVEL, phi_inst->print(llvm::outs()));
                     MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
-                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应源码位置: " << the_phi_ins->InstLoc.toString() << "\n");
+
 
                     handleUser(phi_inst, gv_info, the_phi_ins, level+1);
                     /*
@@ -1664,11 +1689,19 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
     // store ins and call ins only (for now)
     for (vector<BasicBlock *>::iterator iB = BBs.begin(); iB != BBs.end(); iB++)
     {
-        srand((unsigned)time(NULL) * getpid());     
+        //srand((unsigned)time(NULL) * getpid());     
         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
         MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "+-----------------------------\n");
         MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流: 影响基本块\"" << (*iB)->getName() << gen_random(4) << "\"");
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流: 影响基本块, 其LLVM-BBID为\"" << (*iB)->getName() << gen_random(4) << "\"");
+        Instruction * ist = (*iB)->getFirstNonPHI();
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流: 对应源码位置: ");
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(ist).toString() << "\n");
+        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流: 所属函数: " << getOriginalName(ist->getFunction()->getName()));
+
         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
         MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "+-----------------------------\n");
 
@@ -1707,7 +1740,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
 
             //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "No storeInst or callBase in this basicBlock. Control flow in this basic block stop here.\n");
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << ", 该基本块中无后续污点传播，停止。\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << ", 该基本块中无后续污点传播，停止。\n\n");
             continue;
         }
         else if (!store_ins_set.empty() && call_ins_set.empty())
@@ -1726,7 +1759,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
             MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "STOP here: Def `CONTROL_STORE` in tainter.cpp to enable storeInst.\n");
             //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "No storeInst or callBase in this basicBlock. Control flow in this basic block stop here.\n");
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << ", 该基本块中无后续污点传播，停止。\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << ", 该基本块中无后续污点传播，停止。\n\n");
 
 #endif
         }
@@ -1734,23 +1767,27 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
         {
 
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n");
             int kk = 1;
             //MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Only callBase (no storeInst) in this basicBlock. We take all calls as the influenced functions finally. And control flow in this basic block stop here.\n");
             for (vector<CallBase *>::iterator i = call_ins_set.begin(); i != call_ins_set.end(); i++)
             {
                 cur_inst_info->addControllingFuncs((*i)->getCalledFunction());
                 gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
+                
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应第"<< kk++ <<"条IR指令: ");
-                MY_DEBUG(_ERROR_LEVEL, (*i)->print(llvm::outs()));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 基本块内部控制流的第"<< kk++ <<"处污点\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  所属函数: " << getOriginalName(dyn_cast<Instruction>(*i)->getFunction()->getName()));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
-                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应源码位置: ");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 对应源码位置: ");
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(*i)).toString() << "\n");
+                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 所属函数: " << getOriginalName(dyn_cast<Instruction>(*i)->getFunction()->getName()));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 对应IR指令: ");
+                MY_DEBUG(_ERROR_LEVEL, (*i)->print(llvm::outs()));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n");
+
 
                 /*
                 if(gv_info->InfluencedFuncList.find(gv_info->currentGVStartingFuncName) != gv_info->InfluencedFuncList.end())
@@ -1779,22 +1816,24 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
             MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Def `CONTROL_STORE` to enable storeInst.\n");
 #endif
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n");
             int kk = 1;
             for (vector<CallBase *>::iterator i = call_ins_set.begin(); i != call_ins_set.end(); i++)
             {
                 cur_inst_info->addControllingFuncs((*i)->getCalledFunction());
                 gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应第"<< kk++ <<"条IR指令: ");
-                MY_DEBUG(_ERROR_LEVEL, (*i)->print(llvm::outs()));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 基本块内部控制流的第"<< kk++ <<"处污点\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  所属函数: " << getOriginalName(dyn_cast<Instruction>(*i)->getFunction()->getName()));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
-                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应源码位置: ");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 对应源码位置: ");
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(*i)).toString() << "\n");
+                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 所属函数: " << getOriginalName(dyn_cast<Instruction>(*i)->getFunction()->getName()));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应IR指令: ");
+                MY_DEBUG(_ERROR_LEVEL, (*i)->print(llvm::outs()));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n");
 
                 /*
                 if(gv_info->InfluencedFuncList.find(gv_info->currentGVStartingFuncName) != gv_info->InfluencedFuncList.end())
@@ -2475,8 +2514,9 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
                 }
                 */
             }
+            //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流影响 " << taintedBB.size() << " 个基本块\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流影响 " << taintedBB.size() << " 个基本块\n\n");
 
             vector<BasicBlock*> PHIedBB;
             calcPHIedBB(leftBB, rightBB, PHIedBB);
@@ -2543,7 +2583,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             return;
         }
         MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流影响 " << taintedBBs.size() << " 个基本块\n");
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流影响" << taintedBBs.size() << "个基本块\n\n");
 
         // handle those BBs.
         handleControFlowFromBBs(taintedBBs, gv_info, cur_inst_info, level+1);
@@ -3061,26 +3101,34 @@ void handleUser(Value *cur_value,
             MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
             MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\nThe " << user_ite_cnt << " th New Direct User tracing:\n");
         }
-        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "数据流污点传播层数: " << level << "\n");
-        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  ↳ 对应IR指令: ");
-        MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
+        MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "数据流污点传播层数: " << level << "\n");
         if (isa<Instruction>(cur_user))
         {
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    所属函数: " << getOriginalName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应源码位置: ");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << getOriginalName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    对应源码位置: ");
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
+            MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
         }
         else
         {
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    对应源码位置: ");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应源码位置: ");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: ");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
+            MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
         }
 
         if (Instruction *cur_inst = dyn_cast<Instruction>(cur_user))
