@@ -48,37 +48,39 @@ add_executable(tainter
 llvm_map_components_to_libnames(llvm_libs ${LLVM_LINK_COMPONENTS})
 
 
-find_package(Boost 1.73.0 COMPONENTS serialization)
-include_directories(${Boost_INCLUDE_DIRS})
-link_directories(${Boost_LIBRARY_DIRS})
-if(Boost_FOUND)
-    set(Boost_INCLUDE_DIRS /usr/local/include)
-    set(Boost_LIBRARY_DIRS /usr/local/lib)
-    message(STATUS "Boost_INCLUDE_DIRS ${Boost_INCLUDE_DIRS}")
-    message(STATUS "Boost_LIBRARY_DIRS ${Boost_LIBRARY_DIRS}")
+#find_package(Boost 1.73.0 COMPONENTS serialization)
+#include_directories(${Boost_INCLUDE_DIRS})
+#link_directories(${Boost_LIBRARY_DIRS})
+#if(Boost_FOUND)
+#    set(Boost_INCLUDE_DIRS /usr/local/include)
+#    set(Boost_LIBRARY_DIRS /usr/local/lib)
+#    message(STATUS "Boost_INCLUDE_DIRS ${Boost_INCLUDE_DIRS}")
+#    message(STATUS "Boost_LIBRARY_DIRS ${Boost_LIBRARY_DIRS}")
 
     #link llvm component
-    message(STATUS "Found llvm_libs ${llvm_libs}")
-    target_link_libraries(tainter ${llvm_libs} Boost::serialization)
+#   message(STATUS "Found llvm_libs ${llvm_libs}")
+#    target_link_libraries(tainter ${llvm_libs} Boost::serialization)
 
-    target_link_libraries(tainter
-        pthread
+#    target_link_libraries(tainter
+#        pthread
         # tinfo
-        dl
-        ${llvm_libs}
-    )
-else()
-    #link llvm component
-    message(STATUS "Found llvm_libs ${llvm_libs}")
-    target_link_libraries(tainter ${llvm_libs})
+#        dl
+#        ${llvm_libs}
+#    )
+#else()
 
-    target_link_libraries(tainter
-        pthread
-        # tinfo
-        dl
-        ${llvm_libs}
-    )
-endif()
+#link llvm component
+message(STATUS "Found llvm_libs ${llvm_libs}")
+target_link_libraries(tainter ${llvm_libs})
+
+target_link_libraries(tainter
+    pthread
+    dl
+    ${llvm_libs}
+)
+
+
+#endif()
 
 
 
