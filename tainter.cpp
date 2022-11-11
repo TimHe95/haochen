@@ -1831,7 +1831,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 所属函数: " << getOriginalName(dyn_cast<Instruction>(*i)->getFunction()->getName()));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应IR指令: ");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 对应IR指令: ");
                 MY_DEBUG(_ERROR_LEVEL, (*i)->print(llvm::outs()));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n");
 
