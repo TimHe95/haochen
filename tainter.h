@@ -42,13 +42,14 @@
 #include <cxxabi.h>
 #include <typeinfo> //for 'typeid' to work  
 #include <unistd.h>
-
+//#include <bits/stdc++.h>
+#include <set>
 
 
 using namespace llvm;
 using namespace std;
 
-
+#define ENERGY_FOR_FIELD_SENSITIVE 1
 #define _ERROR_LEVEL        0
 #define _WARNING_LEVEL      1
 #define _DEBUG_LEVEL        2
@@ -70,6 +71,9 @@ Vector2 operator+(Vector2 a, Vector2 const& b) {
   return a;
 }
 */
+set<string> visited_CF_BB_by_confName;
+set<string> visited_CF_func_by_confName;
+set<string> visited_entryPoint_by_confName;
 
 std::string gen_random(const int len) {
     static const char alphanum[] =
@@ -92,8 +96,8 @@ bool readConfigVariableNames( std::string, std::vector< struct ConfigVariableNam
 vector<string> splitWithTag( string, string);
 bool findConfigVariable(std::vector<struct ConfigVariableNameInfo* >, GlobalVariable*, std::vector<struct GlobalVariableInfo*>&);
 bool handleDIType(DIType*, std::vector<struct ConfigVariableNameInfo* >, GlobalVariable*, std::vector<struct GlobalVariableInfo*>&);
-void handleUser(Value*, struct GlobalVariableInfo *, struct InstInfo* , unsigned);
-void handleInstruction(Value*, struct GlobalVariableInfo *, struct InstInfo* , unsigned);
+void handleUser(Value*, struct GlobalVariableInfo *, struct InstInfo* , unsigned, unsigned);
+void handleInstruction(Value*, struct GlobalVariableInfo *, struct InstInfo* , unsigned, unsigned);
 bool findVisitedInstruction(struct InstInfo* , struct InstInfo*);
 struct SrcLoc getSrcLoc(Instruction*);
 bool comesBefore(Instruction* , Instruction* );
@@ -108,12 +112,12 @@ unsigned findLastOf(Instruction*, vector<struct LSPair*>);
 string getOriginalName(string);
 string getStructTypeStrFromPrintAPI(Type*);
 vector<unsigned> getIndexFromGEPO(GEPOperator*);
-bool isMatchedGEPOperator(GEPOperator*, struct GlobalVariableInfo*, int level);
+bool isMatchedGEPOperator(GEPOperator*, struct GlobalVariableInfo*, int);
 void printTabs(unsigned);
 unsigned getFuncArgIndex(CallBase*, Value*);
-void traceFunction(struct FuncInfo*, uint level);
+void traceFunction(struct FuncInfo*, uint, uint);
 unsigned isFuncInfoRecorded(struct FuncInfo*, vector<struct FuncInfo*>);
-void traceUser( Value*, struct FuncInfo*, struct InstInfo*);
+void traceUser( Value*, struct FuncInfo*, struct InstInfo*, uint, uint);
 string getAsString(Value*);
 string getClassType(Value*);
 
@@ -201,7 +205,6 @@ struct SrcLoc
 
     string toString()
     {
-        // return this->Dirname+"/"+this->Filename+":"+std::to_string(this->Line);
         if(Dirname.length() == 0)
             return                   this->Filename+":"+std::to_string(this->Line)+":"+std::to_string(this->Col);
         else

@@ -892,7 +892,7 @@ void collectBFSReachableBB(vector<BasicBlock *> &children, BasicBlock *bb, Basic
  * @param func_info __________|          |
  * @param prev_inst_info ________________|
  */
-void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *prev_inst_info, uint level)
+void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *prev_inst_info, uint level, uint energy_for_field_sensitive)
 {
     MY_DEBUG( _DEBUG_LEVEL,  printTabs(level+1));
     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[== " << __func__ << " ==]\n");
@@ -926,19 +926,19 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
         MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
         MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "数据流污点传播层数: " << level << "\n");
         //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  对应IR指令: ");
+        //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  IR指令: ");
         //MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
         if (isa<Instruction>(cur_user))
         {
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应源码位置: ");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "源码位置: ");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << getOriginalName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "IR指令: ");
             MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             /*
@@ -947,7 +947,7 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    所属函数: " << getOriginalName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    对应源码位置：");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    源码位置：");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
             */
         }
@@ -955,12 +955,12 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
         {
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应源码位置: ");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "源码位置: ");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: ");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "IR指令: ");
             MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
         }
@@ -1086,7 +1086,7 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
 
                 if (func_info->hasInsideDataFlowInfluence == UNDEFINE)
                     // in traceFunction, we use `iterateAndCheck` to determine if there is `hasInsideDataFlowInfluence` outisde to this func.
-                    traceFunction(new_func_info, level);
+                    traceFunction(new_func_info, level, energy_for_field_sensitive);
 
                 // So if there is no `hasInsideDataFlowInfluence` or no ret val, do not trace return value
                 if (new_func_info->Ptr->getReturnType()->isVoidTy() || new_func_info->hasInsideDataFlowInfluence == NO)
@@ -1095,7 +1095,7 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                     MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[PASS] return is Void, OR, no data flow to the return value.");
                     continue;
                 }else
-                    traceUser(call, new_func_info, inst_info, level);
+                    traceUser(call, new_func_info, inst_info, level, energy_for_field_sensitive);
             }
             else if (StoreInst *store = dyn_cast<StoreInst>(cur_inst))
             {
@@ -1114,132 +1114,138 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                 ////////////////////////////
                 // getSequenceUses_OnlyGEPins(store_addr);
                 // printSequenceUsers(store_addr);
+
                 if (GetElementPtrInst *gep_inst = dyn_cast<GetElementPtrInst>(store_addr))
                 {
-
-                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "This StoreInst stores to a address obtained by GetElementPtrInst, ");
-
-                    struct SrcLoc srcloc = getSrcLoc(gep_inst);
-
-                    if (srcloc.filenameHasString("include/c++") || srcloc.dirHasString("include/c++"))
-                    {
-                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "but from CXX library, IGNORE.");
-                    }
-                    else if (!gep_inst->hasIndices() ||
-                            gep_inst->getNumOperands() < 3 ||
-                            !gep_inst->hasAllConstantIndices())
-                    {
-                        /** Good Example:
-                         ** %field_i = getelementptr inbounds %struct.TTT, %struct.TTT* %6, i32 0, i32 8
-                        **                                               |       0        |  1  |  2  |   */
+                    if (!energy_for_field_sensitive){
                         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "but num_op = " << gep_inst->getNumOperands() << " (TODO) or not all indices are constant\n");
-                        MY_DEBUG(_DEBUG_LEVEL, srcloc.print(1));
-                    }
-                    else
-                    {
+                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Run-out-of energy for field-sensitive anaylsis. Increase ENERGY_FOR_FIELD_SENSITIVE");
+                    } 
+                    else {
                         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Analyzing this GetElementPtrInst.\n");
+                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "This StoreInst stores to a address obtained by GetElementPtrInst, ");
 
-                        int num = gep_inst->getNumOperands();
+                        struct SrcLoc srcloc = getSrcLoc(gep_inst);
 
-                        /// operand 0 (class/struct type)
-                        Type *type = gep_inst->getOperand(0)->getType();
-
-                        /// operand 1-n (all constant operand)
-                        vector<int> indices;
-                        bool ignore = false;
-                        for (int i = 1; i < num; i++)
+                        if (srcloc.filenameHasString("include/c++") || srcloc.dirHasString("include/c++"))
                         {
-                            if (ConstantInt *second_offset = dyn_cast<ConstantInt>(gep_inst->getOperand(i)))
-                            {
-                                indices.push_back(second_offset->getSExtValue());
-                            }
-                            else
-                            {
-                                ignore = true;
-                            }
+                            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "but from CXX library, IGNORE.");
                         }
-                        // some operand is not constant int, but is int, I don't know why.
-                        if (ignore)
+                        else if (!gep_inst->hasIndices() ||
+                                gep_inst->getNumOperands() < 3 ||
+                                !gep_inst->hasAllConstantIndices())
                         {
+                            /** Good Example:
+                             ** %field_i = getelementptr inbounds %struct.TTT, %struct.TTT* %6, i32 0, i32 8
+                            **                                               |       0        |  1  |  2  |   */
                             MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] Ignore this GetElementPtrInst, some operand is not ConstantInt\n");
-                            MY_DEBUG(_DEBUG_LEVEL, gep_inst->print(llvm::outs()));
-                            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "\n");
+                            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "but num_op = " << gep_inst->getNumOperands() << " (TODO) or not all indices are constant\n");
                             MY_DEBUG(_DEBUG_LEVEL, srcloc.print(1));
                         }
                         else
                         {
-                            // make this gep_inst into a gep_inst_info, and add this gep_inst_info to the Successors/Predecessor list
                             MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] We can handle this GetElementPtrInst.\n");
-                            struct SrcLoc srcloc = getSrcLoc(gep_inst);
-                            struct InstInfo *inst_info_gep = new InstInfo(gep_inst, srcloc);
-                            inst_info->Successors.push_back(inst_info_gep);
-                            inst_info_gep->Predecessor = inst_info;
+                            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Analyzing this GetElementPtrInst.\n");
 
-                            /*
-                            * Find same type with same offset but not identical gep_inst
-                            * This step is NOT accurate with an assumption that "same type with same offset" is for conf only (if yes).
-                            *
-                            *    1. iterate over all get_inst. find the matched one.
-                            */
-                            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] Finding GetElementPtrInst with same type, same offset, but not identical one.\n");
-                            Value *matched_ins = nullptr;
-                            matched_ins = FetchValue4FurtherFollow(type, &indices, gep_inst);
-                            if (matched_ins == nullptr)
+                            int num = gep_inst->getNumOperands();
+
+                            /// operand 0 (class/struct type)
+                            Type *type = gep_inst->getOperand(0)->getType();
+
+                            /// operand 1-n (all constant operand)
+                            vector<int> indices;
+                            bool ignore = false;
+                            for (int i = 1; i < num; i++)
                             {
-                                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOT FOUND] software store conf to a xxx.yyy but never use it? Strange!.\n");
-                            }
-                            else
-                            {
-                                /*
-                                *    2. add matched_ins_info to list, then follow the matched_ins_info recursively.
-                                */
-                                if (Instruction *matched_instruction = dyn_cast<Instruction>(matched_ins))
+                                if (ConstantInt *second_offset = dyn_cast<ConstantInt>(gep_inst->getOperand(i)))
                                 {
-                                    /*
-                                    *    2.1.  make this matched_ins into a matched_ins_info, and add this matched_ins_info to the Successors/Predecessor list
-                                    */
-                                    struct SrcLoc srcloc = getSrcLoc(matched_instruction);
-                                    struct InstInfo *inst_info_matched_ins = new InstInfo(matched_instruction, srcloc, false);
-                                    inst_info_gep->Successors.push_back(inst_info_matched_ins);
-                                    inst_info_matched_ins->Predecessor = inst_info_gep;
-                                    /*
-                                    *    2.2.  follow the matched_ins_info recursively.
-                                    */
-                                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[FOUND] Follow this GetElementPtrInst recursively.\n");
-                                    traceUser(matched_instruction, func_info, inst_info_gep, level + 1);
+                                    indices.push_back(second_offset->getSExtValue());
                                 }
                                 else
                                 {
-                                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[WRONG] check me at line " << __LINE__ << "\n");
+                                    ignore = true;
                                 }
                             }
-                            // printSequenceUsers(gep_inst->getOperand(0));
-                        }
-                    }
+                            // some operand is not constant int, but is int, I don't know why.
+                            if (ignore)
+                            {
+                                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] Ignore this GetElementPtrInst, some operand is not ConstantInt\n");
+                                MY_DEBUG(_DEBUG_LEVEL, gep_inst->print(llvm::outs()));
+                                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "\n");
+                                MY_DEBUG(_DEBUG_LEVEL, srcloc.print(1));
+                            }
+                            else
+                            {
+                                // make this gep_inst into a gep_inst_info, and add this gep_inst_info to the Successors/Predecessor list
+                                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] We can handle this GetElementPtrInst.\n");
+                                struct SrcLoc srcloc = getSrcLoc(gep_inst);
+                                struct InstInfo *inst_info_gep = new InstInfo(gep_inst, srcloc);
+                                inst_info->Successors.push_back(inst_info_gep);
+                                inst_info_gep->Predecessor = inst_info;
 
-                    /// NOTE: The case we handle here is like:
-                    /*
-                    *  define dso_local void @_Z11testAddressRii(i32* dereferenceable(4) %a, i32 %b) #0 !dbg !935 {
-                    *       entry:                                           \______
-                    *       %a.addr = alloca i32*, align 8                           when caller may give a reference, we need be caution if tainting to it.
-                    *       %b.addr = alloca i32, align 4
-                    *       store i32* %a, i32** %a.addr, align 8  <------------------- (3) %a.addr is stored with an address - %a (first argument)
-                    *       store i32 %b, i32* %b.addr, align 4
-                    *       %0 = load i32, i32* @CONFIG_VAR, align 4, !dbg !942
-                    *       %1 = load i32, i32* %b.addr, align 4, !dbg !943
-                    *       %or = or i32 %0, %1, !dbg !944
-                    *       %2 = load i32*, i32** %a.addr, align 8, !dbg !945 <-------- (2) %2 is the address stored in %a.addr
-                    *       store i32 %or, i32* %2, align 4, !dbg !946 <--------------- (1) when store to %2
-                    */
+                                /*
+                                * Find same type with same offset but not identical gep_inst
+                                * This step is NOT accurate with an assumption that "same type with same offset" is for conf only (if yes).
+                                *
+                                *    1. iterate over all get_inst. find the matched one.
+                                */
+                                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] Finding GetElementPtrInst with same type, same offset, but not identical one.\n");
+                                Value *matched_ins = nullptr;
+                                matched_ins = FetchValue4FurtherFollow(type, &indices, gep_inst);
+                                if (matched_ins == nullptr)
+                                {
+                                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOT FOUND] software store conf to a xxx.yyy but never use it? Strange!.\n");
+                                }
+                                else
+                                {
+                                    /*
+                                    *    2. add matched_ins_info to list, then follow the matched_ins_info recursively.
+                                    */
+                                    if (Instruction *matched_instruction = dyn_cast<Instruction>(matched_ins))
+                                    {
+                                        /*
+                                        *    2.1.  make this matched_ins into a matched_ins_info, and add this matched_ins_info to the Successors/Predecessor list
+                                        */
+                                        struct SrcLoc srcloc = getSrcLoc(matched_instruction);
+                                        struct InstInfo *inst_info_matched_ins = new InstInfo(matched_instruction, srcloc, false);
+                                        inst_info_gep->Successors.push_back(inst_info_matched_ins);
+                                        inst_info_matched_ins->Predecessor = inst_info_gep;
+                                        /*
+                                        *    2.2.  follow the matched_ins_info recursively.
+                                        */
+                                        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[FOUND] Follow this GetElementPtrInst recursively.\n");
+                                        traceUser(matched_instruction, func_info, inst_info_gep, level + 1, energy_for_field_sensitive-1);
+                                    }
+                                    else
+                                    {
+                                        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[WRONG] check me at line " << __LINE__ << "\n");
+                                    }
+                                }
+                                // printSequenceUsers(gep_inst->getOperand(0));
+                            }
+                        }
+
+                        /// NOTE: The case we handle here is like:
+                        /*
+                        *  define dso_local void @_Z11testAddressRii(i32* dereferenceable(4) %a, i32 %b) #0 !dbg !935 {
+                        *       entry:                                           \______
+                        *       %a.addr = alloca i32*, align 8                           when caller may give a reference, we need be caution if tainting to it.
+                        *       %b.addr = alloca i32, align 4
+                        *       store i32* %a, i32** %a.addr, align 8  <------------------- (3) %a.addr is stored with an address - %a (first argument)
+                        *       store i32 %b, i32* %b.addr, align 4
+                        *       %0 = load i32, i32* @CONFIG_VAR, align 4, !dbg !942
+                        *       %1 = load i32, i32* %b.addr, align 4, !dbg !943
+                        *       %or = or i32 %0, %1, !dbg !944
+                        *       %2 = load i32*, i32** %a.addr, align 8, !dbg !945 <-------- (2) %2 is the address stored in %a.addr
+                        *       store i32 %or, i32* %2, align 4, !dbg !946 <--------------- (1) when store to %2
+                        */
+                    }
                 }
                 else if (LoadInst *load_inst = dyn_cast<LoadInst>(store_addr))
                 {
@@ -1295,7 +1301,7 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                                             tainted_tobe_followed->print(llvm::outs());
                                             llvm::outs() << "\n";
 
-                                            traceUser(tainted_tobe_followed, func_info, inst_info_caller, level + 1);
+                                            traceUser(tainted_tobe_followed, func_info, inst_info_caller, level + 1, energy_for_field_sensitive);
                                         }
                                     }
                                 }
@@ -1313,7 +1319,7 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                 /// TODO: fix bug here.
                 // Delete at 2022 10 05. Forgot why I had written this line.
                 // Undelete at 2022 10 10. Revert.
-                traceUser(store_addr, func_info, inst_info, level + 1);
+                traceUser(store_addr, func_info, inst_info, level + 1, energy_for_field_sensitive);
 
                 ///////////////////////////////
                 //Value *store_addr = store->getPointerOperand(); // e.g.  "store i32 %1, i32* @somevariable"
@@ -1336,17 +1342,17 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                 /// whatever getNumOperands() = 3 or 2, we only trace the base situations.
                 if (gep->getOperand(0) == cur_value)
                 {
-                    traceUser(gep, func_info, inst_info, level);
+                    traceUser(gep, func_info, inst_info, level, energy_for_field_sensitive);
                 }
                 if (gep->getNumOperands() == 2 && gep->getOperand(1) == cur_value)
                 {
                     inst_info->InfluenceLevel = WEAK;
-                    traceUser(gep, func_info, inst_info, level);
+                    traceUser(gep, func_info, inst_info, level, energy_for_field_sensitive);
                 }
                 if (gep->getNumOperands() == 3 && (gep->getOperand(1) == cur_value || gep->getOperand(2) == cur_value))
                 {
                     inst_info->InfluenceLevel = WEAK;
-                    traceUser(gep, func_info, inst_info, level);
+                    traceUser(gep, func_info, inst_info, level, energy_for_field_sensitive);
                 }
             }
             /*
@@ -1419,7 +1425,7 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                 MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a " << cur_inst->getOpcodeName() << " Instruction.\n");
                 // go further
-                traceUser(cur_inst, func_info, inst_info, level);
+                traceUser(cur_inst, func_info, inst_info, level, energy_for_field_sensitive);
             }
 
             else
@@ -1427,7 +1433,7 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                 // even don't know what is it, just keep tracing
                 MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Unknown type of instruction, but still trace it.\n");
-                traceUser(cur_inst, func_info, inst_info, level);
+                traceUser(cur_inst, func_info, inst_info, level, energy_for_field_sensitive);
             }
         }
 
@@ -1442,7 +1448,7 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
             /// WHY??????????
             if (gepo->getOperand(0) == cur_value)
             {
-                traceUser(gepo, func_info, prev_inst_info, level);
+                traceUser(gepo, func_info, prev_inst_info, level, energy_for_field_sensitive);
             }
         }
 
@@ -1488,7 +1494,7 @@ bool iterateAndCheck(struct InstInfo *inst_info)
 }
 
 /// OUTPUT: Return true if current argument has a dataflow to the return value of this function.
-void traceFunction(struct FuncInfo *func_info, uint level)
+void traceFunction(struct FuncInfo *func_info, uint level, uint energy_for_field_sensitive)
 {
     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[## " << __func__ << " ##]\n");
@@ -1504,7 +1510,7 @@ void traceFunction(struct FuncInfo *func_info, uint level)
      **  llvm::Value <--- llvm::Argument
      *************************************/
     Argument *arg = func_info->Ptr->getArg(func_info->ArgIndex);
-    traceUser(arg, func_info, nullptr, level+1);
+    traceUser(arg, func_info, nullptr, level+1, energy_for_field_sensitive);
 
     /*
      * If there exist at least one data flow from one of the function argument to the return value.
@@ -1630,6 +1636,7 @@ void handlePHINodesFromBBs(vector<BasicBlock *> &BBsPhi, // candidate BB where w
                            BasicBlock * rightBB,         // right BB of the `branchInst`
                            DominatorTree * DT,      // to calculate the POST-DOMINANCE relation
                            unsigned level,
+                           unsigned energy_for_field_sensitive,
                            struct GlobalVariableInfo *gv_info, // if a candidate win, use it to trace further.
                            struct InstInfo *cur_inst_info)     // if a candidate win, use it to trace further.
 {
@@ -1650,19 +1657,20 @@ void handlePHINodesFromBBs(vector<BasicBlock *> &BBsPhi, // candidate BB where w
 
                     struct InstInfo *the_phi_ins = MkNewInstInfoAndLinkOntoPrevInstInfo(phi_inst, cur_inst_info, false);
                     
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+                    //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                    //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[弱数据流](由Phi指令传递)\n");
                     MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[弱数据流](由Phi指令传递)\n");
-                    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应源码位置: " << the_phi_ins->InstLoc.toString() << "\n");
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "源码位置: " << the_phi_ins->InstLoc.toString() << "\n");
                     MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
                     MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << getOriginalName(the_phi_ins->InstPtr->getFunction()->getName()) << "\n");
                     MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "IR指令: ");
                     MY_DEBUG(_ERROR_LEVEL, phi_inst->print(llvm::outs()));
                     MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
 
 
-                    handleUser(phi_inst, gv_info, the_phi_ins, level+1);
+                    handleUser(phi_inst, gv_info, the_phi_ins, level+1, energy_for_field_sensitive);
                     /*
                     vector<User *> users_of_phi = getSequenceUsers(phi_inst);
                     for (vector<User *>::iterator I_user = users_of_phi.begin(); I_user != users_of_phi.end(); I_user++)
@@ -1689,7 +1697,22 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
     // store ins and call ins only (for now)
     for (vector<BasicBlock *>::iterator iB = BBs.begin(); iB != BBs.end(); iB++)
     {
-        //srand((unsigned)time(NULL) * getpid());     
+        string BBname = (*iB)->getName();
+        string FuncName = getOriginalName((*iB)->getFirstNonPHI()->getFunction()->getName());
+        if(BBname == ""){
+            continue;
+        }
+        string cur_conf_name = gv_info->NameInfo->getNameAsString();
+        string indexName = cur_conf_name + FuncName + BBname;
+        bool is_in = visited_CF_BB_by_confName.find(indexName) != visited_CF_BB_by_confName.end();
+        if(is_in)
+            continue;
+        else
+            visited_CF_BB_by_confName.insert(indexName);
+        
+
+        //srand((unsigned)time(NULL) * getpid());
+        /*
         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
         MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "+-----------------------------\n");
         MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
@@ -1697,13 +1720,14 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
         Instruction * ist = (*iB)->getFirstNonPHI();
         MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
         MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流: 对应源码位置: ");
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流: 源码位置: ");
         MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(ist).toString() << "\n");
         MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
         MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流: 所属函数: " << getOriginalName(ist->getFunction()->getName()));
 
         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
         MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "+-----------------------------\n");
+        */
 
         vector<StoreInst *> store_ins_set;
         vector<CallBase *> call_ins_set;
@@ -1740,7 +1764,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
 
             //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "No storeInst or callBase in this basicBlock. Control flow in this basic block stop here.\n");
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << ", 该基本块中无后续污点传播，停止。\n\n");
+            //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << ", 该基本块中无后续污点传播，停止。\n\n");
             continue;
         }
         else if (!store_ins_set.empty() && call_ins_set.empty())
@@ -1752,14 +1776,14 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
             for (vector<StoreInst *>::iterator i = store_ins_set.begin(); i != store_ins_set.end(); i++)
             {
                 struct InstInfo *the_store_ins = MkNewInstInfoAndLinkOntoPrevInstInfo(*i, cur_inst_info, false);
-                handleInstruction((*i)->getValueOperand(), gv_info, the_store_ins, level + 1);
+                handleInstruction((*i)->getValueOperand(), gv_info, the_store_ins, level + 1, energy_for_field_sensitive);
             }
 #else
             MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
             MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "STOP here: Def `CONTROL_STORE` in tainter.cpp to enable storeInst.\n");
             //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "No storeInst or callBase in this basicBlock. Control flow in this basic block stop here.\n");
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << ", 该基本块中无后续污点传播，停止。\n\n");
+            //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << ", 该基本块中无后续污点传播，停止。\n\n");
 
 #endif
         }
@@ -1767,7 +1791,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
         {
 
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             int kk = 1;
             //MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Only callBase (no storeInst) in this basicBlock. We take all calls as the influenced functions finally. And control flow in this basic block stop here.\n");
             for (vector<CallBase *>::iterator i = call_ins_set.begin(); i != call_ins_set.end(); i++)
@@ -1775,18 +1799,27 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 cur_inst_info->addControllingFuncs((*i)->getCalledFunction());
                 gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
                 
+
+                string FuncName2 = getOriginalName((*iB)->getFirstNonPHI()->getFunction()->getName());
+                string CallFuncName = getOriginalName((*i)->getCalledFunction()->getName());
+                string indexName2 = cur_conf_name + FuncName2 + CallFuncName;
+                if(visited_CF_func_by_confName.find(indexName2) != visited_CF_func_by_confName.end())
+                    continue;
+                else
+                    visited_CF_func_by_confName.insert(indexName2);
+
+                //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 基本块内部控制流的第"<< kk++ <<"处污点\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 基本块内部控制流的第"<< kk++ <<"处污点\n");
-                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 对应源码位置: ");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 源码位置: ");
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(*i)).toString() << "\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 所属函数: " << getOriginalName(dyn_cast<Instruction>(*i)->getFunction()->getName()));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 对应IR指令: ");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: IR指令: ");
                 MY_DEBUG(_ERROR_LEVEL, (*i)->print(llvm::outs()));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
 
 
                 /*
@@ -1809,31 +1842,42 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
             for (vector<StoreInst *>::iterator i = store_ins_set.begin(); i != store_ins_set.end(); i++)
             {
                 struct InstInfo *the_store_ins = MkNewInstInfoAndLinkOntoPrevInstInfo(*i, cur_inst_info, false);
-                handleInstruction((*i)->getValueOperand(), gv_info, the_store_ins, level + 1);
+                handleInstruction((*i)->getValueOperand(), gv_info, the_store_ins, level + 1, energy_for_field_sensitive);
             }
 #else
             MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
             MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Def `CONTROL_STORE` to enable storeInst.\n");
 #endif
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             int kk = 1;
             for (vector<CallBase *>::iterator i = call_ins_set.begin(); i != call_ins_set.end(); i++)
             {
+
                 cur_inst_info->addControllingFuncs((*i)->getCalledFunction());
                 gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
+                
+                string FuncName2 = getOriginalName((*iB)->getFirstNonPHI()->getFunction()->getName());
+                string CallFuncName = getOriginalName((*i)->getCalledFunction()->getName());
+                string indexName2 = cur_conf_name + FuncName2 + CallFuncName;
+                if(visited_CF_func_by_confName.find(indexName2) != visited_CF_func_by_confName.end())
+                    continue;
+                else
+                    visited_CF_func_by_confName.insert(indexName2);
+
+
+                //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+                //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 基本块内部控制流的第"<< kk++ <<"处污点\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 基本块内部控制流的第"<< kk++ <<"处污点\n");
-                MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 对应源码位置: ");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 源码位置: ");
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(*i)).toString() << "\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 所属函数: " << getOriginalName(dyn_cast<Instruction>(*i)->getFunction()->getName()));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 对应IR指令: ");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: IR指令: ");
                 MY_DEBUG(_ERROR_LEVEL, (*i)->print(llvm::outs()));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n");
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
 
                 /*
                 if(gv_info->InfluencedFuncList.find(gv_info->currentGVStartingFuncName) != gv_info->InfluencedFuncList.end())
@@ -1940,7 +1984,8 @@ void calcTaintBBfromBr(vector<BasicBlock*> *cur_test_successors,
 void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->ptr`
                        struct GlobalVariableInfo *gv_info,
                        struct InstInfo *cur_inst_info, // the last inst before this user `cur_value`
-                       unsigned level)
+                       unsigned level,
+                       unsigned energy_for_field_sensitive)
 {
     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[== " << __func__ << " ==]\n");
@@ -2050,7 +2095,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
 
         if (func_info->hasInsideDataFlowInfluence == UNDEFINE)
         {    
-            traceFunction(func_info, level);
+            traceFunction(func_info, level, energy_for_field_sensitive);
         }
         /// TODO: Do we need to consider Reference Passing in arguments of functions?
         if (func->getReturnType()->isVoidTy() || func_info->hasInsideDataFlowInfluence == NO)
@@ -2061,7 +2106,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         }
         else
         {
-            handleUser(call, gv_info, cur_inst_info, level + 1);
+            handleUser(call, gv_info, cur_inst_info, level + 1, energy_for_field_sensitive);
         }
 
         // `call` is a llvm::Function, its parent class is llvm::GlobalValue, this will branch into 'return'.
@@ -2103,130 +2148,136 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         // printSequenceUsers(store_addr);
         if (GetElementPtrInst *gep_inst = dyn_cast<GetElementPtrInst>(store_addr))
         {
-
-            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "This StoreInst stores to a address obtained by GetElementPtrInst, ");
-
-            struct SrcLoc srcloc = getSrcLoc(gep_inst);
-
-            if (srcloc.filenameHasString("include/c++") || srcloc.dirHasString("include/c++"))
-            {
-                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "but from CXX library, IGNORE.");
-            }
-            else if (!gep_inst->hasIndices() ||
-                     gep_inst->getNumOperands() < 3 ||
-                     !gep_inst->hasAllConstantIndices())
-            {
-                /** Good Example:
-                 ** %field_i = getelementptr inbounds %struct.TTT, %struct.TTT* %6, i32 0, i32 8
-                 **                                               |       0        |  1  |  2  |   */
+            if (!energy_for_field_sensitive){
                 MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "but num_op = " << gep_inst->getNumOperands() << " (TODO) or not all indices are constant\n");
-                MY_DEBUG(_DEBUG_LEVEL, srcloc.print(1));
-            }
-            else
-            {
+                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Run-out-of energy for field-sensitive anaylsis. Increase ENERGY_FOR_FIELD_SENSITIVE");
+            } 
+            else {
+
                 MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Analyzing this GetElementPtrInst.\n");
+                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "This StoreInst stores to a address obtained by GetElementPtrInst, ");
 
-                int num = gep_inst->getNumOperands();
+                struct SrcLoc srcloc = getSrcLoc(gep_inst);
 
-                /// operand 0 (class/struct type)
-                Type *type = gep_inst->getOperand(0)->getType();
-
-                /// operand 1-n (all constant operand)
-                vector<int> indices;
-                bool ignore = false;
-                for (int i = 1; i < num; i++)
+                if (srcloc.filenameHasString("include/c++") || srcloc.dirHasString("include/c++"))
                 {
-                    if (ConstantInt *second_offset = dyn_cast<ConstantInt>(gep_inst->getOperand(i)))
-                    {
-                        indices.push_back(second_offset->getSExtValue());
-                    }
-                    else
-                    {
-                        ignore = true;
-                    }
+                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "but from CXX library, IGNORE.");
                 }
-                // some operand is not constant int, but is int, I don't know why.
-                if (ignore)
+                else if (!gep_inst->hasIndices() ||
+                         gep_inst->getNumOperands() < 3 ||
+                         !gep_inst->hasAllConstantIndices())
                 {
+                    /** Good Example:
+                     ** %field_i = getelementptr inbounds %struct.TTT, %struct.TTT* %6, i32 0, i32 8
+                     **                                               |       0        |  1  |  2  |   */
                     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] Ignore this GetElementPtrInst, some operand is not ConstantInt\n");
-                    MY_DEBUG(_DEBUG_LEVEL, gep_inst->print(llvm::outs()));
-                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "\n");
+                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "but num_op = " << gep_inst->getNumOperands() << " (TODO) or not all indices are constant\n");
                     MY_DEBUG(_DEBUG_LEVEL, srcloc.print(1));
                 }
                 else
                 {
-                    // make this gep_inst into a gep_inst_info, and add this gep_inst_info to the Successors/Predecessor list
                     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] We can handle this GetElementPtrInst.\n");
-                    struct SrcLoc srcloc = getSrcLoc(gep_inst);
-                    struct InstInfo *inst_info_gep = new InstInfo(gep_inst, srcloc);
-                    cur_inst_info->Successors.push_back(inst_info_gep);
-                    inst_info_gep->Predecessor = cur_inst_info;
+                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "Analyzing this GetElementPtrInst.\n");
 
-                    /*
-                     * Find same type with same offset but not identical gep_inst
-                     * This step is NOT accurate with an assumption that "same type with same offset" is for conf only (if yes).
-                     *
-                     *    1. iterate over all get_inst. find the matched one.
-                     */
-                    MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] Finding GetElementPtrInst with same type, same offset, but not identical one.\n");
-                    Value *matched_ins = nullptr;
-                    matched_ins = FetchValue4FurtherFollow(type, &indices, gep_inst);
-                    if (matched_ins == nullptr)
+                    int num = gep_inst->getNumOperands();
+
+                    /// operand 0 (class/struct type)
+                    Type *type = gep_inst->getOperand(0)->getType();
+
+                    /// operand 1-n (all constant operand)
+                    vector<int> indices;
+                    bool ignore = false;
+                    for (int i = 1; i < num; i++)
                     {
-                        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOT FOUND] software store conf to a xxx.yyy but never use it? Strange!.\n");
-                    }
-                    else
-                    {
-                        /*
-                         *    2. add matched_ins_info to list, then follow the matched_ins_info recursively.
-                         */
-                        if (Instruction *matched_instruction = dyn_cast<Instruction>(matched_ins))
+                        if (ConstantInt *second_offset = dyn_cast<ConstantInt>(gep_inst->getOperand(i)))
                         {
-                            /*
-                             *    2.1.  make this matched_ins into a matched_ins_info, and add this matched_ins_info to the Successors/Predecessor list
-                             */
-                            struct SrcLoc srcloc = getSrcLoc(matched_instruction);
-                            struct InstInfo *inst_info_matched_ins = new InstInfo(matched_instruction, srcloc, false);
-                            inst_info_gep->Successors.push_back(inst_info_matched_ins);
-                            inst_info_matched_ins->Predecessor = inst_info_gep;
-                            /*
-                             *    2.2.  follow the matched_ins_info recursively.
-                             */
-                            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[FOUND] Follow this GetElementPtrInst recursively.\n");
-                            handleUser(matched_instruction, gv_info, inst_info_gep, level + 1);
+                            indices.push_back(second_offset->getSExtValue());
                         }
                         else
                         {
-                            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
-                            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[WRONG] check me at line " << __LINE__ << "\n");
+                            ignore = true;
                         }
                     }
-                    // printSequenceUsers(gep_inst->getOperand(0));
-                }
-            }
+                    // some operand is not constant int, but is int, I don't know why.
+                    if (ignore)
+                    {
+                        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] Ignore this GetElementPtrInst, some operand is not ConstantInt\n");
+                        MY_DEBUG(_DEBUG_LEVEL, gep_inst->print(llvm::outs()));
+                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "\n");
+                        MY_DEBUG(_DEBUG_LEVEL, srcloc.print(1));
+                    }
+                    else
+                    {
+                        // make this gep_inst into a gep_inst_info, and add this gep_inst_info to the Successors/Predecessor list
+                        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] We can handle this GetElementPtrInst.\n");
+                        struct SrcLoc srcloc = getSrcLoc(gep_inst);
+                        struct InstInfo *inst_info_gep = new InstInfo(gep_inst, srcloc);
+                        cur_inst_info->Successors.push_back(inst_info_gep);
+                        inst_info_gep->Predecessor = cur_inst_info;
 
-            /// NOTE: The case we handle here is like:
-            /*
-             *  define dso_local void @_Z11testAddressRii(i32* dereferenceable(4) %a, i32 %b) #0 !dbg !935 {
-             *       entry:                                           \______
-             *       %a.addr = alloca i32*, align 8                           when caller may give a reference, we need be caution if tainting to it.
-             *       %b.addr = alloca i32, align 4
-             *       store i32* %a, i32** %a.addr, align 8  <------------------- (3) %a.addr is stored with an address - %a (first argument)
-             *       store i32 %b, i32* %b.addr, align 4
-             *       %0 = load i32, i32* @CONFIG_VAR, align 4, !dbg !942
-             *       %1 = load i32, i32* %b.addr, align 4, !dbg !943
-             *       %or = or i32 %0, %1, !dbg !944
-             *       %2 = load i32*, i32** %a.addr, align 8, !dbg !945 <-------- (2) %2 is the address stored in %a.addr
-             *       store i32 %or, i32* %2, align 4, !dbg !946 <--------------- (1) when store to %2
-             */
+                        /*
+                         * Find same type with same offset but not identical gep_inst
+                         * This step is NOT accurate with an assumption that "same type with same offset" is for conf only (if yes).
+                         *
+                         *    1. iterate over all get_inst. find the matched one.
+                         */
+                        MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                        MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] Finding GetElementPtrInst with same type, same offset, but not identical one.\n");
+                        Value *matched_ins = nullptr;
+                        matched_ins = FetchValue4FurtherFollow(type, &indices, gep_inst);
+                        if (matched_ins == nullptr)
+                        {
+                            MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                            MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOT FOUND] software store conf to a xxx.yyy but never use it? Strange!.\n");
+                        }
+                        else
+                        {
+                            /*
+                             *    2. add matched_ins_info to list, then follow the matched_ins_info recursively.
+                             */
+                            if (Instruction *matched_instruction = dyn_cast<Instruction>(matched_ins))
+                            {
+                                /*
+                                 *    2.1.  make this matched_ins into a matched_ins_info, and add this matched_ins_info to the Successors/Predecessor list
+                                 */
+                                struct SrcLoc srcloc = getSrcLoc(matched_instruction);
+                                struct InstInfo *inst_info_matched_ins = new InstInfo(matched_instruction, srcloc, false);
+                                inst_info_gep->Successors.push_back(inst_info_matched_ins);
+                                inst_info_matched_ins->Predecessor = inst_info_gep;
+                                /*
+                                 *    2.2.  follow the matched_ins_info recursively.
+                                 */
+                                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[FOUND] Follow this GetElementPtrInst recursively.\n");
+                                handleUser(matched_instruction, gv_info, inst_info_gep, level + 1, energy_for_field_sensitive-1);
+                            }
+                            else
+                            {
+                                MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
+                                MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[WRONG] check me at line " << __LINE__ << "\n");
+                            }
+                        }
+                        // printSequenceUsers(gep_inst->getOperand(0));
+                    }
+                }
+
+                /// NOTE: The case we handle here is like:
+                /*
+                 *  define dso_local void @_Z11testAddressRii(i32* dereferenceable(4) %a, i32 %b) #0 !dbg !935 {
+                 *       entry:                                           \______
+                 *       %a.addr = alloca i32*, align 8                           when caller may give a reference, we need be caution if tainting to it.
+                 *       %b.addr = alloca i32, align 4
+                 *       store i32* %a, i32** %a.addr, align 8  <------------------- (3) %a.addr is stored with an address - %a (first argument)
+                 *       store i32 %b, i32* %b.addr, align 4
+                 *       %0 = load i32, i32* @CONFIG_VAR, align 4, !dbg !942
+                 *       %1 = load i32, i32* %b.addr, align 4, !dbg !943
+                 *       %or = or i32 %0, %1, !dbg !944
+                 *       %2 = load i32*, i32** %a.addr, align 8, !dbg !945 <-------- (2) %2 is the address stored in %a.addr
+                 *       store i32 %or, i32* %2, align 4, !dbg !946 <--------------- (1) when store to %2
+                 */
+            }
         }
         else if (LoadInst *load_inst = dyn_cast<LoadInst>(store_addr))
         {
@@ -2280,11 +2331,11 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
                                     inst_info_caller->Predecessor = cur_inst_info;
                                     Value *tainted_tobe_followed = caller_inst->getArgOperand(arg_index);
                                     MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
+                                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "IR指令: ");
                                     MY_DEBUG(_ERROR_LEVEL, tainted_tobe_followed->print(llvm::outs()));
                                     MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
 
-                                    handleUser(tainted_tobe_followed, gv_info, inst_info_caller, level + 1);
+                                    handleUser(tainted_tobe_followed, gv_info, inst_info_caller, level + 1, energy_for_field_sensitive);
                                 }
                             }
                         }
@@ -2302,7 +2353,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         /// TODO: fix bug here.
         // Deleted 2022 10 05 forgot why I had written this line
         // Undelete at 2022 10 10. Revert.
-        handleUser(store_addr, gv_info, cur_inst_info, level + 1);
+        handleUser(store_addr, gv_info, cur_inst_info, level + 1, energy_for_field_sensitive);
     }
     else if (GetElementPtrInst *gep = dyn_cast<GetElementPtrInst>(cur_inst))
     {
@@ -2326,14 +2377,14 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
                 visitedStructGVCases.push_back(cur_inst);
 
                 /// NOTE: We found the gep instruction to get structural configuration option, so we trace it.
-                handleUser(gep, gv_info, cur_inst_info, level + 1);
+                handleUser(gep, gv_info, cur_inst_info, level + 1, energy_for_field_sensitive);
             }
         }
         else // prev_inst_info != nullptr
         {
             if (gep->getPointerOperand() == cur_value) // used as gep_base
             {
-                handleUser(gep, gv_info, cur_inst_info, level + 1);
+                handleUser(gep, gv_info, cur_inst_info, level + 1, energy_for_field_sensitive);
             }
             else
             {
@@ -2342,7 +2393,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
                     if ((*it) == cur_value)
                     {
                         cur_inst_info->InfluenceLevel = WEAK;
-                        handleUser(gep, gv_info, cur_inst_info, level + 1);
+                        handleUser(gep, gv_info, cur_inst_info, level + 1, energy_for_field_sensitive);
                     }
                 }
             }
@@ -2365,7 +2416,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             //    e.g., open_flag = select, srv_unix_file_flush_method==SRV_UNIX_O_DSYNC? O_SYNC : xxx
             MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
             MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[Control-Flow WARINING] following a selectInst, where the pre-taint is the condition.\n");
-            handleUser(select_inst, gv_info, cur_inst_info, level + 1);
+            handleUser(select_inst, gv_info, cur_inst_info, level + 1, energy_for_field_sensitive);
 
             // Former way, deprecated.
             //cur_inst_info->isControllingInst = true;
@@ -2377,7 +2428,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         {
             MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
             MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "following a selectInst, where the pre-taint is the if-true/if-false value (this is data-flow).\n");
-            handleUser(select_inst, gv_info, cur_inst_info, level + 1);
+            handleUser(select_inst, gv_info, cur_inst_info, level + 1, energy_for_field_sensitive);
         }
     }
     else if (BranchInst *branch = dyn_cast<BranchInst>(cur_inst))
@@ -2515,8 +2566,8 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
                 */
             }
             //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
-            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流影响 " << taintedBB.size() << " 个基本块\n\n");
+            //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流影响 " << taintedBB.size() << " 个基本块\n\n");
 
             vector<BasicBlock*> PHIedBB;
             calcPHIedBB(leftBB, rightBB, PHIedBB);
@@ -2540,6 +2591,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
                                   rightBB, 
                                   DT, 
                                   level + 1, 
+                                  energy_for_field_sensitive,
                                   gv_info, 
                                   cur_inst_info);
 
@@ -2687,7 +2739,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
             cur_inst_info->Successors.push_back(inst_info_caller);
             inst_info_caller->Predecessor = cur_inst_info;
 
-            handleUser(caller_inst, gv_info, inst_info_caller, level + 1);
+            handleUser(caller_inst, gv_info, inst_info_caller, level + 1, energy_for_field_sensitive);
         }
     }
     else if (                        // UnaryInstruction
@@ -2715,7 +2767,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
         MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "It is a " << cur_inst->getOpcodeName() << " Instruction.\n");
         // go further
-        handleUser(cur_inst, gv_info, cur_inst_info, level + 1);
+        handleUser(cur_inst, gv_info, cur_inst_info, level + 1, energy_for_field_sensitive);
     }
 
     else
@@ -2724,7 +2776,7 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
         MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Unhandled Instruction, Opcode: " << cur_inst->getOpcodeName() << "\n");
 
         // even don't know what is it, just keep tracing
-        handleUser(cur_inst, gv_info, cur_inst_info, level + 1);
+        handleUser(cur_inst, gv_info, cur_inst_info, level + 1, energy_for_field_sensitive);
     }
 }
 
@@ -2997,13 +3049,14 @@ bool isMatchedGEPOperator(GEPOperator *gepo, struct GlobalVariableInfo *gv_info,
 void handleUser(Value *cur_value,
                 struct GlobalVariableInfo *gv_info,
                 struct InstInfo *prev_inst_info,
-                unsigned level) {
+                unsigned level,
+                unsigned energy_for_field_sensitive) {
     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[== " << __func__ << " ==]\n");
 
     if (!cur_value && level>0)
         return;
-    else if (!cur_value && level==0){
+    else if (!cur_value && level == 0){
 
         /*
         * ========== FIELD case ==========
@@ -3013,7 +3066,7 @@ void handleUser(Value *cur_value,
         *    1. iterate over all get_inst. find the matched one.
         */
         MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "污点入口(非全局变量)\n");
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "污点入口(非全局变量): \n");
         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
         MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] Finding GetElementPtrInst with same type, same offset, but not identical one.\n");
         Value *matched_ins = nullptr;
@@ -3052,7 +3105,7 @@ void handleUser(Value *cur_value,
                     */
                     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[FOUND] Follow this GetElementPtrInst recursively.\n");
-                    handleUser(matched_instruction, gv_info, nullptr, level + 1);
+                    handleUser(matched_instruction, gv_info, nullptr, level + 1, energy_for_field_sensitive);
                 }
                 else
                 {
@@ -3097,9 +3150,21 @@ void handleUser(Value *cur_value,
 
         if (level == 0)
         {
+            string cur_conf_name, source_path, indexName;
+            if (isa<Instruction>(cur_user)){
+                cur_conf_name = gv_info->NameInfo->getNameAsString();
+                source_path = getSrcLoc(dyn_cast<Instruction>(cur_user)).toString();
+                indexName = cur_conf_name+source_path;
+            }
+            if(visited_entryPoint_by_confName.find(indexName) != visited_entryPoint_by_confName.end())
+                continue;
+            else
+                visited_entryPoint_by_confName.insert(indexName);
+
             visitedLoadStoreInstList.clear();
             MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
             MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\nThe " << user_ite_cnt << " th New Direct User tracing:\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n污点入口" << user_ite_cnt << ":\n");
         }
         MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
         MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "数据流污点传播层数: " << level << "\n");
@@ -3107,28 +3172,31 @@ void handleUser(Value *cur_value,
         {
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应源码位置: ");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "源码位置: ");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << getOriginalName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "IR指令: ");
             MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
         }
         else
         {
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            /*
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应源码位置: ");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "源码位置: 该指令为LLVM内部处理自动生成指令，不对应源码行");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: ");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "对应IR指令: ");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "IR指令: ");
             MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+            */
         }
 
         if (Instruction *cur_inst = dyn_cast<Instruction>(cur_user))
@@ -3234,7 +3302,7 @@ void handleUser(Value *cur_value,
                 inst_info->Predecessor = prev_inst_info;
             }
 
-            handleInstruction(cur_value, gv_info, inst_info, level);
+            handleInstruction(cur_value, gv_info, inst_info, level, energy_for_field_sensitive);
         }
 
         else if (GEPOperator *gepo = dyn_cast<GEPOperator>(cur_user))
@@ -3265,7 +3333,7 @@ void handleUser(Value *cur_value,
                     visitedStructGVCases.push_back(cur_user);
 
                     /// NOTE: We found the gep instruction to get structural configuration option, so we trace it.
-                    handleUser(gepo, gv_info, prev_inst_info, level + 1);
+                    handleUser(gepo, gv_info, prev_inst_info, level + 1, energy_for_field_sensitive);
                 }
                 else
                 {
@@ -3279,7 +3347,7 @@ void handleUser(Value *cur_value,
 
                 if (gepo->getPointerOperand() == cur_value)
                 {
-                    handleUser(gepo, gv_info, prev_inst_info, level + 1);
+                    handleUser(gepo, gv_info, prev_inst_info, level + 1, energy_for_field_sensitive);
                 }
             }
         }
@@ -3306,7 +3374,7 @@ void handleUser(Value *cur_value,
                         unsigned type_offset = std::stoul(dest_type_str.substr(pos + src_type_str.length() + 1, dest_type_str.length()));
                         MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
                         MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "Current Type Offset : " << type_offset << "\n");
-                        handleUser(bcop, gv_info, prev_inst_info, level + 1);
+                        handleUser(bcop, gv_info, prev_inst_info, level + 1, energy_for_field_sensitive);
                     }
                 }
             }
@@ -3644,11 +3712,12 @@ int main(int argc, char **argv)
         MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n\n\n========= 进度: ["<< gv_cnt+1 << "/" << gv_info_list.size() <<"] ========\n\n");
         MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "当前正在分析: ");
         MY_DEBUG(_ERROR_LEVEL, gv_info_list[gv_cnt]->NameInfo->print(0));
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n注意，若该配置项在程序中多处使用，则工具会自动识别每处使用位置作为污点入口\n\n");
 
         /*============================================
          * This is the very core function of this tool.
           ============================================*/
-        handleUser(gv, gv_info, nullptr, 0);
+        handleUser(gv, gv_info, nullptr, 0, ENERGY_FOR_FIELD_SENSITIVE);
     }
 
     /// NOTE: Record information to 'records.dat' and DEBUG INFO.
