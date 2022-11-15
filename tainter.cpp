@@ -1802,7 +1802,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
 
                 string FuncName2 = getOriginalName((*iB)->getFirstNonPHI()->getFunction()->getName());
                 string CallFuncName = getOriginalName((*i)->getCalledFunction()->getName());
-                string indexName2 = cur_conf_name + FuncName2 + CallFuncName;
+                string indexName2 = cur_conf_name + FuncName2 + BBname + CallFuncName;
                 if(visited_CF_func_by_confName.find(indexName2) != visited_CF_func_by_confName.end())
                     continue;
                 else
@@ -1859,7 +1859,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 
                 string FuncName2 = getOriginalName((*iB)->getFirstNonPHI()->getFunction()->getName());
                 string CallFuncName = getOriginalName((*i)->getCalledFunction()->getName());
-                string indexName2 = cur_conf_name + FuncName2 + CallFuncName;
+                string indexName2 = cur_conf_name + FuncName2 + BBname + CallFuncName;
                 if(visited_CF_func_by_confName.find(indexName2) != visited_CF_func_by_confName.end())
                     continue;
                 else

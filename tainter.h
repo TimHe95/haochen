@@ -49,7 +49,7 @@
 using namespace llvm;
 using namespace std;
 
-#define ENERGY_FOR_FIELD_SENSITIVE 1
+#define ENERGY_FOR_FIELD_SENSITIVE 4
 #define _ERROR_LEVEL        0
 #define _WARNING_LEVEL      1
 #define _DEBUG_LEVEL        2
