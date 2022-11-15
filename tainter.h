@@ -71,6 +71,7 @@ Vector2 operator+(Vector2 a, Vector2 const& b) {
   return a;
 }
 */
+bool prune = false;
 set<string> visited_CF_BB_by_confName;
 set<string> visited_CF_func_by_confName;
 set<string> visited_entryPoint_by_confName;

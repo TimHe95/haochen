@@ -1705,7 +1705,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
         string cur_conf_name = gv_info->NameInfo->getNameAsString();
         string indexName = cur_conf_name + FuncName + BBname;
         bool is_in = visited_CF_BB_by_confName.find(indexName) != visited_CF_BB_by_confName.end();
-        if(is_in)
+        if(is_in && prune)
             continue;
         else
             visited_CF_BB_by_confName.insert(indexName);
@@ -1803,7 +1803,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 string FuncName2 = getOriginalName((*iB)->getFirstNonPHI()->getFunction()->getName());
                 string CallFuncName = getOriginalName((*i)->getCalledFunction()->getName());
                 string indexName2 = cur_conf_name + FuncName2 + BBname + CallFuncName;
-                if(visited_CF_func_by_confName.find(indexName2) != visited_CF_func_by_confName.end())
+                if(visited_CF_func_by_confName.find(indexName2) != visited_CF_func_by_confName.end() && prune)
                     continue;
                 else
                     visited_CF_func_by_confName.insert(indexName2);
@@ -1860,7 +1860,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 string FuncName2 = getOriginalName((*iB)->getFirstNonPHI()->getFunction()->getName());
                 string CallFuncName = getOriginalName((*i)->getCalledFunction()->getName());
                 string indexName2 = cur_conf_name + FuncName2 + BBname + CallFuncName;
-                if(visited_CF_func_by_confName.find(indexName2) != visited_CF_func_by_confName.end())
+                if(visited_CF_func_by_confName.find(indexName2) != visited_CF_func_by_confName.end() && prune)
                     continue;
                 else
                     visited_CF_func_by_confName.insert(indexName2);
@@ -3156,7 +3156,7 @@ void handleUser(Value *cur_value,
                 source_path = getSrcLoc(dyn_cast<Instruction>(cur_user)).toString();
                 indexName = cur_conf_name+source_path;
             }
-            if(visited_entryPoint_by_confName.find(indexName) != visited_entryPoint_by_confName.end())
+            if(visited_entryPoint_by_confName.find(indexName) != visited_entryPoint_by_confName.end() && prune)
                 continue;
             else
                 visited_entryPoint_by_confName.insert(indexName);
