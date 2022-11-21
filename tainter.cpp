@@ -72,9 +72,10 @@ vector<Value *> FetchValue4FurtherFollow2(string type, vector<int> *indice)
         string fulltype = '.' + type;
         std::string type_str;
         llvm::raw_string_ostream rso(type_str);
-        i->first.first->print(rso);
+        i->first.first->print(rso); // this will not print to stdout
         // **** DEBUG ****
         //llvm::outs() << rso.str() << "  " << fulltype << "\n";
+        // ***************
         if (!isSubStr(rso.str(), fulltype)) // Type* not match 
         //rso.str() != fulltype.isSubStr())
             continue;
@@ -297,6 +298,13 @@ string getStructTypeStrFromPrintAPI(Type *cur_type)
     }
 
     return type_name;
+}
+
+void printWhiteSpaces(unsigned level)
+{
+    for (unsigned i = 0; i < level; i++)
+        llvm::outs() << " ";
+    // llvm::outs()<<"\t";
 }
 
 void printTabs(unsigned level)
@@ -1693,6 +1701,23 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[== " << __func__ << " ==]\n");
 
+    //MY_DEBUG(_DEBUG_LEVEL, printTabs(1));
+    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流\n\n");
+
+    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流开始的分支语句: " << getSrcLoc(cur_inst_info->InstPtr).toRealContent() << "\n");
+    
+    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "源码位置: " << getSrcLoc(cur_inst_info->InstPtr).toStringFilename() );
+    //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "   所在函数: " << getOriginalName(cur_inst_info->InstPtr->getFunction()->getName()) << "  行数: "<< getSrcLoc(cur_inst_info->InstPtr).toStringLine() <<"\n");
+
+    MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "IR指令: ");
+    MY_DEBUG(_ERROR_LEVEL, cur_inst_info->InstPtr->print(llvm::outs()));
+    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+
+
     // iterate every BB in vector<BasicBlock*> BBs, handle
     // store ins and call ins only (for now)
     for (vector<BasicBlock *>::iterator iB = BBs.begin(); iB != BBs.end(); iB++)
@@ -2043,10 +2068,10 @@ void handleInstruction(Value *cur_value, // one of the user of `cur_inst_info->p
          **/
         string func_name = getOriginalName(func->getName());
         unsigned arg_index = getFuncArgIndex(call, cur_value);
-        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "函数名: " << func_name << "\n");
-        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "污点从第" << arg_index << "个参数传入\n");
+        MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "函数名: " << func_name << "\n");
+        MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
+        MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "污点从第" << arg_index << "个参数传入\n");
 
         /// Record current call information.
         struct FuncInfo *func_info = new FuncInfo(func, func_name, arg_index, cur_inst_info->InstLoc.toString());
@@ -3065,7 +3090,8 @@ void handleUser(Value *cur_value,
         *
         *    1. iterate over all get_inst. find the matched one.
         */
-        MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+        //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+        //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "入口\n");
         MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "污点入口(非全局变量): \n");
         MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
         MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[NOTE] Finding GetElementPtrInst with same type, same offset, but not identical one.\n");
@@ -3105,7 +3131,8 @@ void handleUser(Value *cur_value,
                     */
                     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
                     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[FOUND] Follow this GetElementPtrInst recursively.\n");
-                    handleUser(matched_instruction, gv_info, nullptr, level + 1, energy_for_field_sensitive);
+                    
+                    handleUser(matched_instruction, gv_info, nullptr, level, energy_for_field_sensitive);
                 }
                 else
                 {
@@ -3155,16 +3182,44 @@ void handleUser(Value *cur_value,
                 cur_conf_name = gv_info->NameInfo->getNameAsString();
                 source_path = getSrcLoc(dyn_cast<Instruction>(cur_user)).toString();
                 indexName = cur_conf_name+source_path;
+                if(visited_entryPoint_by_confName.find(indexName) != visited_entryPoint_by_confName.end() && prune)
+                    continue;
+                else{
+                    // in rare case, the srcLoc is available in the next user.
+                    if(isa<PtrToIntInst>(cur_user)){
+                        handleUser(cur_user, gv_info, nullptr, 0, energy_for_field_sensitive);
+                        return;
+                    }
+
+                    struct SrcLoc srclocEntry = getSrcLoc(dyn_cast<Instruction>(cur_user));
+                    if( !srclocEntry.isValid() ) // the source location of entry is not clear. drop the case any way
+                        continue;
+
+                    // this is the only way to start tainting.
+                    visited_entryPoint_by_confName.insert(indexName);
+                }
+            } else {
+                continue; // I dont know why the entry can be non-instruction, just drop it.
             }
-            if(visited_entryPoint_by_confName.find(indexName) != visited_entryPoint_by_confName.end() && prune)
-                continue;
-            else
-                visited_entryPoint_by_confName.insert(indexName);
 
             visitedLoadStoreInstList.clear();
             MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
             MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\nThe " << user_ite_cnt << " th New Direct User tracing:\n");
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n污点入口" << user_ite_cnt << ":\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n入口" << user_ite_cnt << ":\n\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "入口所在文件: " << getSrcLoc(dyn_cast<Instruction>(cur_user)).toStringFilename() );
+            //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "   函数: " << getOriginalName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()) << "  行数: "<< getSrcLoc(dyn_cast<Instruction>(cur_user)).toStringLine() <<"\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "配置使用语句: " << getSrcLoc(dyn_cast<Instruction>(cur_user)).toRealContent() << "\n");
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 8));
+            MY_DEBUG(_ERROR_LEVEL, printWhiteSpaces(getSrcLoc(dyn_cast<Instruction>(cur_user)).toStringColNum()));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << " \u2196配置变量\n\n");
+            
+
+            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "数据流" << "\n");
         }
         MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
         MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "数据流污点传播层数: " << level << "\n");
@@ -3712,7 +3767,7 @@ int main(int argc, char **argv)
         MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n\n\n========= 进度: ["<< gv_cnt+1 << "/" << gv_info_list.size() <<"] ========\n\n");
         MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "当前正在分析: ");
         MY_DEBUG(_ERROR_LEVEL, gv_info_list[gv_cnt]->NameInfo->print(0));
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n注意，若该配置项在程序中多处使用，则工具会自动识别每处使用位置作为污点入口\n\n");
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "注意，若该配置项在程序中多处使用，则工具会自动识别每处使用位置作为污点入口\n");
 
         /*============================================
          * This is the very core function of this tool.

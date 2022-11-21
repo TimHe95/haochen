@@ -44,7 +44,7 @@
 #include <unistd.h>
 //#include <bits/stdc++.h>
 #include <set>
-
+#include <regex>
 
 using namespace llvm;
 using namespace std;
@@ -122,7 +122,9 @@ void traceUser( Value*, struct FuncInfo*, struct InstInfo*, uint, uint);
 string getAsString(Value*);
 string getClassType(Value*);
 
-
+//string leftTrim(string &s) {
+//    return regex_replace(s, regex("^\s+"), string(""));
+//}
 
 struct LSPair
 {
@@ -204,12 +206,59 @@ struct SrcLoc
         // llvm::outs()<<this->Dirname<<"/"<<this->Filename<<":"<<this->Line<<":"<<this->Col<<"\n";
     }
 
+    string toRealContent()
+    {
+        if(!this->isValid())
+            return " [错误] 文件路径有误";
+
+        string sLine = "";
+        ifstream read;
+        unsigned line_no = 0;
+
+        try {
+            read.open(this->Dirname+"/"+this->Filename);
+        } catch(std::ios_base::failure& e) {
+            llvm::outs() << e.what() << "\n";
+            return " [错误] 文件打开失败";
+        }
+
+        while (line_no != this->Line && getline(read, sLine)) {
+            ++line_no;
+        }
+
+        if (line_no == this->Line) {
+            // sLine contains the [this->Line]-th line in the file.
+            return sLine;//leftTrim(sLine);
+        } else {
+            // The file contains fewer than two lines.
+            return " [错误] 文件行数小于指定行数";
+        }
+    }
+
     string toString()
     {
         if(Dirname.length() == 0)
             return                   this->Filename+":"+std::to_string(this->Line)+":"+std::to_string(this->Col);
         else
             return this->Dirname+"/"+this->Filename+":"+std::to_string(this->Line)+":"+std::to_string(this->Col);
+    }
+
+    string toStringNoDir()
+    {
+        return this->Filename+":"+std::to_string(this->Line)+":"+std::to_string(this->Col);
+    }
+
+    string toStringFilename()
+    {
+        return this->Filename;
+    }
+
+    string toStringLine(){
+        return std::to_string(this->Line);
+    }
+
+    unsigned toStringColNum(){
+        return this->Col;
     }
 
     bool dirHasString(string keyword)
