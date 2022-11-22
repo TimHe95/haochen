@@ -1062,8 +1062,8 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
                  */
                 string func_name = getOriginalName(func->getName());
                 unsigned arg_index = getFuncArgIndex(call, cur_value);
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "函数名: " << func_name << "\n");
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "污点从第" << arg_index << "个参数传入\n");
+                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "函数名: " << func_name << "\n");
+                MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "污点从第" << arg_index << "个参数传入\n");
                 struct FuncInfo *new_func_info = new FuncInfo(func, func_name, arg_index, inst_info->InstLoc.toString());
                 unsigned index = isFuncInfoRecorded(new_func_info, func_info->InsideFuncInfoList);
                 if (index == ERR_OORANGE)
@@ -3078,6 +3078,8 @@ void handleUser(Value *cur_value,
                 unsigned energy_for_field_sensitive) {
     MY_DEBUG(_DEBUG_LEVEL, printTabs(level + 1));
     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[== " << __func__ << " ==]\n");
+    
+    unsigned user_ite_cnt = 0;
 
     if (!cur_value && level>0)
         return;
@@ -3161,7 +3163,6 @@ void handleUser(Value *cur_value,
      *            UserVec.push_back(*i);
      */
     vector<User *> UserVec = getSequenceUsers(cur_value);
-    unsigned user_ite_cnt = 0;
 
     /**
      * @brief for each user of this global variable
@@ -3169,7 +3170,7 @@ void handleUser(Value *cur_value,
     for(auto i = UserVec.rbegin(), e = UserVec.rend(); i != e; i++)
     {
         User *cur_user = *i;
-        user_ite_cnt++;
+        //user_ite_cnt++;
 
         /// If cur_user is a struct GV User, and matched with previous GVs, we don't waste time to handle it once more.
         if (std::find(visitedStructGVCases.begin(), visitedStructGVCases.end(), cur_user) != visitedStructGVCases.end())
@@ -3205,7 +3206,7 @@ void handleUser(Value *cur_value,
             visitedLoadStoreInstList.clear();
             MY_DEBUG(_WARNING_LEVEL, printTabs(level + 1));
             MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "\nThe " << user_ite_cnt << " th New Direct User tracing:\n");
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n入口" << user_ite_cnt << ":\n\n");
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n入口" << user_ite_cnt++ << ":\n\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "入口所在文件: " << getSrcLoc(dyn_cast<Instruction>(cur_user)).toStringFilename() );
             //MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
@@ -3230,7 +3231,10 @@ void handleUser(Value *cur_value,
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "源码位置: ");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
+            if(!dyn_cast<Instruction>(cur_user)->getParent()->getParent() && !dyn_cast<Instruction>(cur_user)->getFunction())
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: Note: it is undefined behavior to call this on an instruction not currently inserted into a function.");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << getOriginalName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << dyn_cast<Instruction>(cur_user)->getFunction()->getName());
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "IR指令: ");
