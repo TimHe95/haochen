@@ -474,6 +474,30 @@ unsigned getFuncArgIndex(CallBase *call, Value *cur_value)
     return ERR_OORANGE;
 }
 
+std::string exec(const char* cmd) {
+    char buffer[128];
+    std::string result = "";
+    FILE* pipe = popen(cmd, "r");
+    if (!pipe) throw std::runtime_error("popen() failed!");
+    try {
+        while (fgets(buffer, sizeof buffer, pipe) != NULL) {
+            result += buffer;
+        }
+    } catch (...) {
+        pclose(pipe);
+        throw;
+    }
+    pclose(pipe);
+    //llvm::outs() << result;
+    result.erase(std::remove(result.begin(), result.end(), '\n'), result.end());
+    return result;
+}
+
+string getOriginalFuncName(string manglingName){
+    string cmd = "c++filt -p -i " + manglingName;
+    return exec(cmd.c_str());
+}
+
 /// Demangle the function name
 /// Input: mangling name
 /// output: demangling name
@@ -499,6 +523,8 @@ string getOriginalName(string manglingName)
 
     return name;
 }
+
+
 
 bool handleDIType(DIType *di_type, 
                   std::vector<struct ConfigVariableNameInfo *> config_names, 
@@ -943,7 +969,7 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "源码位置: ");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << getOriginalName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << getOriginalFuncName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "IR指令: ");
@@ -1671,7 +1697,7 @@ void handlePHINodesFromBBs(vector<BasicBlock *> &BBsPhi, // candidate BB where w
                     MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
                     MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "源码位置: " << the_phi_ins->InstLoc.toString() << "\n");
                     MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << getOriginalName(the_phi_ins->InstPtr->getFunction()->getName()) << "\n");
+                    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << getOriginalFuncName(the_phi_ins->InstPtr->getFunction()->getName()) << "\n");
                     MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
                     MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "IR指令: ");
                     MY_DEBUG(_ERROR_LEVEL, phi_inst->print(llvm::outs()));
@@ -1702,8 +1728,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
     MY_DEBUG(_DEBUG_LEVEL, llvm::outs() << "[== " << __func__ << " ==]\n");
 
     //MY_DEBUG(_DEBUG_LEVEL, printTabs(1));
-    MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流\n\n");
-
+    /*
     MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
     MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "控制流开始的分支语句: " << getSrcLoc(cur_inst_info->InstPtr).toRealContent() << "\n");
     
@@ -1716,14 +1741,14 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
     MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "IR指令: ");
     MY_DEBUG(_ERROR_LEVEL, cur_inst_info->InstPtr->print(llvm::outs()));
     MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
-
+    */
 
     // iterate every BB in vector<BasicBlock*> BBs, handle
     // store ins and call ins only (for now)
     for (vector<BasicBlock *>::iterator iB = BBs.begin(); iB != BBs.end(); iB++)
     {
         string BBname = (*iB)->getName();
-        string FuncName = getOriginalName((*iB)->getFirstNonPHI()->getFunction()->getName());
+        string FuncName = ((*iB)->getFirstNonPHI()->getFunction()->getName());
         if(BBname == ""){
             continue;
         }
@@ -1825,8 +1850,8 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
                 
 
-                string FuncName2 = getOriginalName((*iB)->getFirstNonPHI()->getFunction()->getName());
-                string CallFuncName = getOriginalName((*i)->getCalledFunction()->getName());
+                string FuncName2 = ((*iB)->getFirstNonPHI()->getFunction()->getName());
+                string CallFuncName = ((*i)->getCalledFunction()->getName());
                 string indexName2 = cur_conf_name + FuncName2 + BBname + CallFuncName;
                 if(visited_CF_func_by_confName.find(indexName2) != visited_CF_func_by_confName.end() && prune)
                     continue;
@@ -1839,7 +1864,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 源码位置: ");
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(*i)).toString() << "\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 所属函数: " << getOriginalName(dyn_cast<Instruction>(*i)->getFunction()->getName()));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 所属函数: " << getOriginalFuncName(dyn_cast<Instruction>(*i)->getFunction()->getName()));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: IR指令: ");
@@ -1882,8 +1907,8 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 cur_inst_info->addControllingFuncs((*i)->getCalledFunction());
                 gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
                 
-                string FuncName2 = getOriginalName((*iB)->getFirstNonPHI()->getFunction()->getName());
-                string CallFuncName = getOriginalName((*i)->getCalledFunction()->getName());
+                string FuncName2 = ((*iB)->getFirstNonPHI()->getFunction()->getName());
+                string CallFuncName = ((*i)->getCalledFunction()->getName());
                 string indexName2 = cur_conf_name + FuncName2 + BBname + CallFuncName;
                 if(visited_CF_func_by_confName.find(indexName2) != visited_CF_func_by_confName.end() && prune)
                     continue;
@@ -1897,7 +1922,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 源码位置: ");
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(*i)).toString() << "\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 所属函数: " << getOriginalName(dyn_cast<Instruction>(*i)->getFunction()->getName()));
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: 所属函数: " << getOriginalFuncName(dyn_cast<Instruction>(*i)->getFunction()->getName()));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
                 MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: IR指令: ");
@@ -3231,10 +3256,7 @@ void handleUser(Value *cur_value,
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "源码位置: ");
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            if(!dyn_cast<Instruction>(cur_user)->getParent()->getParent() && !dyn_cast<Instruction>(cur_user)->getFunction())
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: Note: it is undefined behavior to call this on an instruction not currently inserted into a function.");
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << getOriginalName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << dyn_cast<Instruction>(cur_user)->getFunction()->getName());
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "所属函数: " << getOriginalFuncName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "IR指令: ");

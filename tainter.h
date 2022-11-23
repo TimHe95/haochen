@@ -23,6 +23,9 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm-c/IRReader.h"
 
+
+#include "llvm/Demangle/Demangle.h"
+
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/ADT/BreadthFirstIterator.h"
 #include "llvm/Analysis/PostDominators.h"
