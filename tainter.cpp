@@ -8,8 +8,8 @@
                 2   :   debug   :   _DEBUG_LEVEL
                 3   :   redundency: _REDUNDENCY_LEVEL
 */
-//unsigned debug_level = _DEBUG_LEVEL;
-unsigned debug_level = _ERROR_LEVEL;
+unsigned debug_level = _DEBUG_LEVEL;
+//unsigned debug_level = _ERROR_LEVEL;
 
 Module *M = nullptr;
 struct DLCallGraph *DLCG;
@@ -1750,13 +1750,16 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
         string BBname = (*iB)->getName();
         string FuncName = ((*iB)->getFirstNonPHI()->getFunction()->getName());
         if(BBname == ""){
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[控制流调试信息]: BB name empty.\n");
             continue;
         }
         string cur_conf_name = gv_info->NameInfo->getNameAsString();
         string indexName = cur_conf_name + FuncName + BBname;
         bool is_in = visited_CF_BB_by_confName.find(indexName) != visited_CF_BB_by_confName.end();
-        if(is_in && prune)
+        if(is_in && prune){
+            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[控制流调试信息]: BB has been tainted.\n");
             continue;
+        }
         else
             visited_CF_BB_by_confName.insert(indexName);
         
@@ -1850,8 +1853,8 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
                 
 
-                string FuncName2 = ((*iB)->getFirstNonPHI()->getFunction()->getName());
-                string CallFuncName = ((*i)->getCalledFunction()->getName());
+                string FuncName2 = (*iB)->getFirstNonPHI()->getFunction()->getName();
+                string CallFuncName = (*i)->getCalledFunction()->getName();
                 string indexName2 = cur_conf_name + FuncName2 + BBname + CallFuncName;
                 if(visited_CF_func_by_confName.find(indexName2) != visited_CF_func_by_confName.end() && prune)
                     continue;
