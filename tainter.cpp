@@ -975,6 +975,8 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "IR指令: ");
             MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+
+            //gv->taintedCodeLines
             /*
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
             MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
@@ -1703,6 +1705,7 @@ void handlePHINodesFromBBs(vector<BasicBlock *> &BBsPhi, // candidate BB where w
                     MY_DEBUG(_ERROR_LEVEL, phi_inst->print(llvm::outs()));
                     MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
 
+                    gv_info->taintedCodeLines.push_back(the_phi_ins->InstLoc.toRealContent());
 
                     handleUser(phi_inst, gv_info, the_phi_ins, level+1, energy_for_field_sensitive);
                     /*
@@ -1874,6 +1877,7 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 MY_DEBUG(_ERROR_LEVEL, (*i)->print(llvm::outs()));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
 
+                gv_info->taintedCodeLines.push_back(getSrcLoc(dyn_cast<Instruction>(*i)).toRealContent());
 
                 /*
                 if(gv_info->InfluencedFuncList.find(gv_info->currentGVStartingFuncName) != gv_info->InfluencedFuncList.end())
@@ -1931,6 +1935,8 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "  控制流: IR指令: ");
                 MY_DEBUG(_ERROR_LEVEL, (*i)->print(llvm::outs()));
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+
+                gv_info->taintedCodeLines.push_back(getSrcLoc(dyn_cast<Instruction>(*i)).toRealContent());
 
                 /*
                 if(gv_info->InfluencedFuncList.find(gv_info->currentGVStartingFuncName) != gv_info->InfluencedFuncList.end())
@@ -3265,6 +3271,8 @@ void handleUser(Value *cur_value,
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "IR指令: ");
             MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
+
+            gv_info->taintedCodeLines.push_back(getSrcLoc(dyn_cast<Instruction>(cur_user)).toRealContent());
         }
         else
         {
@@ -3802,6 +3810,10 @@ int main(int argc, char **argv)
          * This is the very core function of this tool.
           ============================================*/
         handleUser(gv, gv_info, nullptr, 0, ENERGY_FOR_FIELD_SENSITIVE);
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n污点代码: ");
+        for(auto Codeline : gv_info->taintedCodeLines){
+           MY_DEBUG(_ERROR_LEVEL, llvm::outs() << Codeline << "\n");
+        }
     }
 
     /// NOTE: Record information to 'records.dat' and DEBUG INFO.

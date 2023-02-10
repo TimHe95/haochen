@@ -31,7 +31,7 @@
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/IR/Dominators.h"
 
-
+#include <stdexcept>
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -549,6 +549,9 @@ struct GlobalVariableInfo
     GlobalVariable* Ptr;
     string GlobalVariableType;  // name info of 
     vector<unsigned> Offsets;   // indicate the offset of struct field in GEPOperator
+
+    // to implement ssl's requirement, output the tainted code in an separat area.
+    std::vector<string> taintedCodeLines;
 
     // every first-user (which is usually an instruction) of this gv(configuration variable)
     std::vector<struct InstInfo *> InstInfoList;
