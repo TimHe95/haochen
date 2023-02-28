@@ -8,8 +8,8 @@
                 2   :   debug   :   _DEBUG_LEVEL
                 3   :   redundency: _REDUNDENCY_LEVEL
 */
-unsigned debug_level = _DEBUG_LEVEL;
-//unsigned debug_level = _ERROR_LEVEL;
+//unsigned debug_level = _DEBUG_LEVEL;
+unsigned debug_level = _ERROR_LEVEL;
 
 Module *M = nullptr;
 struct DLCallGraph *DLCG;
@@ -1752,15 +1752,19 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
     {
         string BBname = (*iB)->getName();
         string FuncName = ((*iB)->getFirstNonPHI()->getFunction()->getName());
-        if(BBname == ""){
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[控制流调试信息]: BB name empty.\n");
+        //if((*iB)->isEntryBlock()){
+            //}
+        if(!(*iB)->hasName()){
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[控制流 调试信息]: name empty?");
+            //printBBName(llvm::outs(), *iB);
+            //llvm::outs() << ".\n";
             continue;
         }
         string cur_conf_name = gv_info->NameInfo->getNameAsString();
         string indexName = cur_conf_name + FuncName + BBname;
         bool is_in = visited_CF_BB_by_confName.find(indexName) != visited_CF_BB_by_confName.end();
         if(is_in && prune){
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "[控制流调试信息]: BB has been tainted.\n");
+            MY_DEBUG(_WARNING_LEVEL, llvm::outs() << "[控制流 调试信息]: BB has been tainted.\n");
             continue;
         }
         else
@@ -3810,9 +3814,13 @@ int main(int argc, char **argv)
          * This is the very core function of this tool.
           ============================================*/
         handleUser(gv, gv_info, nullptr, 0, ENERGY_FOR_FIELD_SENSITIVE);
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n污点代码: ");
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n=====================\n\n 污点代码: \n\n");
+
+        vector<string> printed;
         for(auto Codeline : gv_info->taintedCodeLines){
-           MY_DEBUG(_ERROR_LEVEL, llvm::outs() << Codeline << "\n");
+            if(printed.end() != find(printed.begin(), printed.end(), Codeline))
+                printed.push_back(Codeline);
+                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << Codeline << "\n");  
         }
     }
 
