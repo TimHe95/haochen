@@ -250,7 +250,7 @@ bool readConfigVariableNames(std::string var_file, std::vector<struct ConfigVari
 
     return true;
 }
-
+SrcLoc preSrcloc;
 struct SrcLoc getSrcLoc(Instruction *inst)
 {
     string filename = "";
@@ -267,6 +267,10 @@ struct SrcLoc getSrcLoc(Instruction *inst)
     }
 
     struct SrcLoc srcloc(filename, dirname, line, col);
+	
+	if(line==0 && col==0 && filename=="") srcloc = preSrcloc;
+	
+	preSrcloc = srcloc;
     return srcloc;
 }
 
@@ -976,16 +980,6 @@ void traceUser(Value *cur_value, struct FuncInfo *func_info, struct InstInfo *pr
             MY_DEBUG(_ERROR_LEVEL, cur_user->print(llvm::outs()));
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
 
-            //gv->taintedCodeLines
-            /*
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
-            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    所属函数: " << getOriginalName(dyn_cast<Instruction>(cur_user)->getFunction()->getName()));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
-            MY_DEBUG(_ERROR_LEVEL, printTabs(level + 1));
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "    源码位置：");
-            MY_DEBUG(_ERROR_LEVEL, llvm::outs() << getSrcLoc(dyn_cast<Instruction>(cur_user)).toString() << "\n");
-            */
         }
         else
         {
@@ -1706,6 +1700,7 @@ void handlePHINodesFromBBs(vector<BasicBlock *> &BBsPhi, // candidate BB where w
                     MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
 
                     gv_info->taintedCodeLines.push_back(the_phi_ins->InstLoc.toRealContent());
+					gv_info->taintedCodeLinesIR.push_back(the_phi_ins);
 
                     handleUser(phi_inst, gv_info, the_phi_ins, level+1, energy_for_field_sensitive);
                     /*
@@ -1882,6 +1877,9 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
 
                 gv_info->taintedCodeLines.push_back(getSrcLoc(dyn_cast<Instruction>(*i)).toRealContent());
+				struct SrcLoc srcloc = getSrcLoc(dyn_cast<Instruction>(*i));
+				struct InstInfo *inst_info = new InstInfo(dyn_cast<Instruction>(*i), srcloc);
+				gv_info->taintedCodeLinesIR.push_back(inst_info);
 
                 /*
                 if(gv_info->InfluencedFuncList.find(gv_info->currentGVStartingFuncName) != gv_info->InfluencedFuncList.end())
@@ -1941,7 +1939,9 @@ void handleControFlowFromBBs(vector<BasicBlock *> &BBs,
                 MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
 
                 gv_info->taintedCodeLines.push_back(getSrcLoc(dyn_cast<Instruction>(*i)).toRealContent());
-
+				struct SrcLoc srcloc = getSrcLoc(dyn_cast<Instruction>(*i));
+				struct InstInfo *inst_info = new InstInfo(dyn_cast<Instruction>(*i), srcloc);
+				gv_info->taintedCodeLinesIR.push_back(inst_info);
                 /*
                 if(gv_info->InfluencedFuncList.find(gv_info->currentGVStartingFuncName) != gv_info->InfluencedFuncList.end())
                     gv_info->InfluencedFuncList[gv_info->currentGVStartingFuncName].push_back((*i)->getCalledFunction());
@@ -3277,6 +3277,9 @@ void handleUser(Value *cur_value,
             MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n");
 
             gv_info->taintedCodeLines.push_back(getSrcLoc(dyn_cast<Instruction>(cur_user)).toRealContent());
+			struct SrcLoc srcloc = getSrcLoc(dyn_cast<Instruction>(cur_user));
+			struct InstInfo *inst_info = new InstInfo(dyn_cast<Instruction>(cur_user), srcloc);
+			gv_info->taintedCodeLinesIR.push_back(inst_info);
         }
         else
         {
@@ -3515,6 +3518,67 @@ void handleUser(Value *cur_value,
                 })
         }
     }
+}
+
+
+bool cmp_1(const InstInfo* x, const InstInfo* y)    
+{  
+	struct SrcLoc InstLocX = x->InstLoc;
+	struct SrcLoc InstLocY = y->InstLoc;
+	if(InstLocX.Dirname == InstLocY.Dirname ) return InstLocX.Filename < InstLocY.Filename;
+	return InstLocX.Dirname < InstLocY.Dirname;    
+}
+
+void myprintfCode(string Filename, string Dirname, unsigned start, unsigned end, vector<unsigned> highlight){
+	//MY_DEBUG(_ERROR_LEVEL, llvm::outs() << start <<"-"<<end << "\n");
+	MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "...\n");
+    string res = "", sLine = "";
+    ifstream read;
+    unsigned line_no = 1;
+
+    try {
+        read.open(Dirname+"/"+Filename);
+    } catch(std::ios_base::failure& e) {
+        llvm::outs() << e.what() << "\n";
+        return ;
+    }
+
+    while (line_no <= end && getline(read, sLine)) {
+		if(line_no >= start) 
+			if(find(highlight.begin(), highlight.end(), line_no) != highlight.end())
+				res = res + '*' + sLine + "\n";
+			else
+				res = res + ' ' + sLine + "\n";
+        ++line_no;
+    }
+	MY_DEBUG(_ERROR_LEVEL, llvm::outs() << res << "\n");
+}
+
+void myprintf(string funcname, vector<struct InstInfo *> &toPrint){
+	int DIS = 3;
+
+	std::string Filename = toPrint[0]->InstLoc.Filename;
+    std::string Dirname = toPrint[0]->InstLoc.Dirname;
+	MY_DEBUG(_ERROR_LEVEL, llvm::outs() <<"\n"+Dirname+"/"+Filename+"\n"<< funcname << "():\n");
+	vector<unsigned> lines;
+	for(int i=0;i<toPrint.size();i++){
+		unsigned Line = toPrint[i]->InstLoc.Line;	
+		lines.push_back(Line);
+	}
+	std::sort(lines.begin(), lines.end());
+	unsigned start = -1, end = -1;
+	vector<unsigned> highlight;
+	for(int i=0;i<lines.size();i++){
+		if(start == -1) start = end = lines[i];
+		else if(lines[i] - end <= DIS) end = lines[i];
+		else{
+			myprintfCode(Filename, Dirname, start-DIS+1, end+DIS-1, highlight);
+			start = end = lines[i];
+			highlight.clear();
+		}
+		highlight.push_back(lines[i]);
+	}
+	myprintfCode(Filename, Dirname, start-DIS+1, end+DIS-1, highlight);
 }
 
 int main(int argc, char **argv)
@@ -3814,13 +3878,14 @@ int main(int argc, char **argv)
          * This is the very core function of this tool.
           ============================================*/
         handleUser(gv, gv_info, nullptr, 0, ENERGY_FOR_FIELD_SENSITIVE);
-        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n=====================\n\n 污点代码: \n\n");
+        //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n=====================\n\n 污点代码: \n\n");
 
         vector<string> printed;
         for(auto Codeline : gv_info->taintedCodeLines){
-            if(printed.end() != find(printed.begin(), printed.end(), Codeline))
+            if(find(printed.begin(), printed.end(), Codeline) == printed.end()){
                 printed.push_back(Codeline);
-                MY_DEBUG(_ERROR_LEVEL, llvm::outs() << Codeline << "\n");  
+                //MY_DEBUG(_ERROR_LEVEL, llvm::outs() << Codeline <<"\n");  
+            }
         }
     }
 
@@ -3870,5 +3935,50 @@ int main(int argc, char **argv)
             break;
         }
     }
+
+
+    for (unsigned gv_cnt = 0; gv_cnt < gv_info_list.size(); gv_cnt++)
+    {
+        //  gv_info_list    ~~  std::vector<GlobalVariableInfo*>
+        struct GlobalVariableInfo *gv_info = gv_info_list[gv_cnt];
+        GlobalVariable *gv = gv_info_list[gv_cnt]->Ptr;
+
+        MY_DEBUG(_ERROR_LEVEL, llvm::outs() << "\n\n=====================\n\n 污点代码: \n\n");
+		gv_info->taintedCodeLinesIR;
+        vector<string> printed;
+		vector<struct InstInfo *> toPrint;
+		map<string, vector<struct InstInfo *>> PrintMap;
+        for(auto eachIR : gv_info->taintedCodeLinesIR){
+			struct InstInfo * theIR = (InstInfo *)eachIR;
+			string Codeline = theIR->InstLoc.toRealContent();
+			if(Codeline.find("错误") != -1) continue;
+            if(find(printed.begin(), printed.end(), Codeline) == printed.end()){
+                printed.push_back(Codeline);
+				toPrint.push_back(theIR);
+            }else{
+				continue;
+			}
+
+			vector<struct InstInfo *> tmp; tmp.push_back(theIR);
+			string funname = theIR->InstPtr->getFunction()->getName().str();
+			if(PrintMap.find(funname)==PrintMap.end()){
+				PrintMap[funname] = tmp;
+			}else{
+				PrintMap[funname].push_back(theIR);
+			}
+        }
+		//for(auto eachIR : toPrint){
+		//	struct InstInfo * theIR = (InstInfo *)eachIR;
+		//	string Codeline = theIR->InstLoc.toRealContent();
+
+		//	Function* func = theIR->InstPtr->getFunction();
+		//	string funname = func->getName().str();
+		//	MY_DEBUG(_ERROR_LEVEL, llvm::outs() <<  Codeline <<" "\n");
+		//}
+		for (std::map<string, vector<struct InstInfo *>>::iterator it = PrintMap.begin(); it != PrintMap.end(); it++){
+			myprintf((*it).first, (*it).second); 
+		}
+    }
+
     return 0;
 }

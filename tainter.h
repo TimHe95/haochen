@@ -48,6 +48,7 @@
 //#include <bits/stdc++.h>
 #include <set>
 #include <regex>
+#include <algorithm>
 
 using namespace llvm;
 using namespace std;
@@ -482,6 +483,13 @@ struct InstInfo
             return true;
         return false;
     }
+
+	bool operator <(InstInfo* _inst_info)
+    {
+        if( this->InstPtr == _inst_info->InstPtr)
+            return true;
+        return false;
+    }
 };
 
 
@@ -552,6 +560,7 @@ struct GlobalVariableInfo
 
     // to implement ssl's requirement, output the tainted code in an separat area.
     std::vector<string> taintedCodeLines;
+	std::vector<struct InstInfo *> taintedCodeLinesIR;
 
     // every first-user (which is usually an instruction) of this gv(configuration variable)
     std::vector<struct InstInfo *> InstInfoList;
@@ -673,7 +682,8 @@ struct GlobalVariableInfo
 
     void dumpInstInfo(string output_file, struct InstInfo* inst_info, unsigned level)
     {
-        
+        //if(find(taintedCodeLinesIR.begin(), taintedCodeLinesIR.end(), inst_info) == taintedCodeLinesIR.end())
+		//	taintedCodeLinesIR.push_back(inst_info);
         ofstream fout(output_file.c_str(), ios::app);
         if(! fout)
         {
